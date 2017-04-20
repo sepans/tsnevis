@@ -15,6 +15,11 @@ camera.position.x = w/2;
 camera.position.y = h/2;
 camera.position.z = 900;
 
+let allMetaData;
+
+
+const metaDiv = document.getElementById('meta')
+
 
 const renderer = new THREE.WebGLRenderer({
     antialias: true
@@ -121,27 +126,26 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 
 }
 
-// const q = d3.queue()
-//     .defer(d3.json, 'data/word2vec_tsne_2d.json')
-//     .defer(d3.json, 'data/word2vec_meta.json')
-//     .awaitAll((error, results) => {
-//         if (error) {
-//             console.log('ERROR', error)
-//             throw error;
-//         }
-//         const tsne = results[0],
-//               meta = results[1]
-//         console.log(meta[0])
-//         console.log(meta[1])
-//         console.log(meta[2])
-//         addPoints(tsne, meta, d => d.coords[0], d => d.coords[1], m => m.meta.groups[0])
-//     })
+const q = d3.queue()
+    .defer(d3.json, 'data/word2vec_tsne_2d.json')
+    .defer(d3.json, 'data/word2vec_meta.json')
+    .awaitAll((error, results) => {
+        if (error) {
+            console.log('ERROR', error)
+            throw error;
+        }
+        const tsne = results[0],
+              meta = results[1]
+        console.log(meta[0])
+        allMetaData = meta
+        addPoints(tsne, meta, d => d.coords[0], d => d.coords[1], m => m.meta.groups[0])
+    })
 
 
-d3.json('data/word2vec_tsne_2d.json', (data) => {
-	console.log(data)
-	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
-})
+// d3.json('data/word2vec_tsne_2d.json', (data) => {
+// 	console.log(data)
+// 	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
+// })
 
 const unfiltered = [{x: 20, y: 10}, {x: 40, y: 80}, {x: 6, y: 40}, {x: 80, y: 20}, {x: 10, y: 50}]
 
@@ -210,6 +214,7 @@ function mousewheel(e) {
 let frameCount = 0
 
 let prevHighlight = {}
+let highlightedIndex = -1
 
 function animate(t) {
     if (!paused) {
@@ -236,45 +241,17 @@ function animate(t) {
         intersects = raycaster.intersectObjects(scene.children, true);
 
 
-        // var geometry = points.geometry;
-        // var attributes = geometry.attributes;
+        // just higlight one point!!!
+        for ( var i = 0; i < Math.min(intersects.length, 1); i++ ) {
 
-        // if(intersects.length) {
-        //     console.log(intersects.length)
-        // }
-
-        for ( var i = 0; i < intersects.length; i++ ) {
-
-            //console.log('INTERSECTS', intersects)
-            // console.log(intersects[i].object, intersects[i].object.children.length)
-            // if(intersects[i].object.children.length===0)
-
-            //intersects[ i ].object.material.color.set( 0xff0000 );
-
-            // if ( intersects.length > 0 ) {
-            //         if ( INTERSECTED != intersects[ 0 ].index ) {
-            //             attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
-            //             INTERSECTED = intersects[ 0 ].index;
-            //             attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE * 1.25;
-            //             attributes.size.needsUpdate = true;
-            //         }
-            //     } else if ( INTERSECTED !== null ) {
-            //         attributes.size.array[ INTERSECTED ] = PARTICLE_SIZE;
-            //         attributes.size.needsUpdate = true;
-            //         INTERSECTED = null;
-            //     }
+            
 
             const intersect = intersects[0]
             const index = intersect.index
-            //console.log(index, /*pointGeo.colors[index]*/ points.geometry)
 
-            // if(intersect.object.type === 'Points') {
-
-
-            // }
+            highlightedIndex = index
             //console.log(prevHighlight[index])
             Object.keys(prevHighlight).forEach(indexKey => {
-                console.log(indexKey, index)
                 if(indexKey!==index) {
                     pointGeo.colors[indexKey] = prevHighlight[indexKey]
                     delete prevHighlight[indexKey]
@@ -295,6 +272,11 @@ function animate(t) {
 
 
             points.geometry.colorsNeedUpdate = true
+            //console.log(allMetaData[index])
+            metaDiv.innerHTML = `<img src="${allMetaData[index].meta.sizes[0].source}">`//JSON.stringify(allMetaData[index], 2)
+            metaDiv.style.top =  - (mouse.y - 1)/2 * h
+            metaDiv.style.left = (mouse.x + 1)/2 * w
+            metaDiv.style.opacity = 1
 
             //  if(prevHighlight) {
             //     console.log('NO highlight', prevHighlight)
@@ -304,7 +286,20 @@ function animate(t) {
 
             // }
 
-        }        
+        }
+        if(intersects.length==0) {
+            Object.keys(prevHighlight).forEach(indexKey => {
+                pointGeo.colors[indexKey] = prevHighlight[indexKey]
+                delete prevHighlight[indexKey]
+                points.geometry.colorsNeedUpdate = true
+            })
+            highlightedIndex = -1
+
+            metaDiv.style.opacity = 0
+
+
+
+        }       
         //camera.lookAt(scene.position);
         renderer.render(scene, camera);
     }
