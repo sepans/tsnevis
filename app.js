@@ -38,7 +38,7 @@ scene.add(scatterPlot);
 
 console.log('scatter', scatterPlot)
 
-const PARTICLE_SIZE = 3
+const PARTICLE_SIZE = 5
 
 const mat = new THREE.PointsMaterial({
     vertexColors: true,
@@ -195,7 +195,7 @@ window.ondblclick = () => {
 document.body.addEventListener( 'mousewheel', mousewheel, false );
 document.body.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
 
-const ZOOM_MIN_Z = 50
+const ZOOM_MIN_Z = 100
 	  ZOOM_MAX_Z = 1000
 
 function mousewheel(e) {
@@ -273,7 +273,8 @@ function animate(t) {
 
             points.geometry.colorsNeedUpdate = true
             //console.log(allMetaData[index])
-            metaDiv.innerHTML = `<img src="${allMetaData[index].meta.sizes[0].source}">`//JSON.stringify(allMetaData[index], 2)
+            const metaData = allMetaData[index].meta
+            metaDiv.innerHTML = `<div class="title">${metaData.title}</div><div class="category">${metaData.groups.join(', ')}</div><img src="${metaData.sizes[1].source}">`//JSON.stringify(allMetaData[index], 2)
             metaDiv.style.top =  - (mouse.y - 1)/2 * h
             metaDiv.style.left = (mouse.x + 1)/2 * w
             metaDiv.style.opacity = 1
