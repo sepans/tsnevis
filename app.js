@@ -11,9 +11,9 @@ var camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000);
 // camera.position.z = 200;
 // camera.position.x = -100;
 // camera.position.y = 100;
-camera.position.x = w/2;
-camera.position.y = h/2;
-camera.position.z = 900;
+camera.position.x = w/2
+camera.position.y = h/2
+camera.position.z = 200//900;
 
 
 const renderer = new THREE.WebGLRenderer({
@@ -66,7 +66,7 @@ const mat = new THREE.PointsMaterial({
 
 // var line = new THREE.LineSegments( geometry, material );
 // scene.add( line );
-const pointGeo = new THREE.Geometry();
+const pointGeo = new THREE.BufferGeometry();
 const points = new THREE.Points(pointGeo, mat);
 
 
@@ -98,12 +98,15 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 	//     pointGeo.colors.push(new THREE.Color().setRGB(255, 0, 0));
 
 	// })
+    var positions = new Float32Array(pointCount * 3);
+    var colors = new Float32Array(pointCount * 3);
+    var alphas = new Float32Array(pointCount);
+
 	for (let i = 0; i < pointCount; i ++) {
 	    const x = xScale(xAccessor(dataPoints[i]));
 	    const y = yScale(yAccessor(dataPoints[i]));
 	    const z = 0//zScale(unfiltered[i].z);
 
-	    pointGeo.vertices.push(new THREE.Vector3(x, y, z));
 	    
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
@@ -111,9 +114,27 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
         const pointColor = colorScale(metaAccessor(metaData ? metaData[i] : 'x'))
         const pointRGB = hexToRgb(pointColor)
         //console.log(metaAccessor(metaData[i]), pointColor, pointRGB, pointRGB.r, pointRGB.g, pointRGB.b)
-	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
+
+        // pointGeo.vertices.push(new THREE.Vector3(x, y, z));
+	    // pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
+
+        positions[i * 3 + 0] = x; //x;
+        positions[i * 3 + 1] = y; // y;
+        positions[i * 3 + 2] = z; //z;
+
+        // colors
+        colors[i * 3 + 0] = pointRGB.r;
+        colors[i * 3 + 1] = pointRGB.g;
+        colors[i * 3 + 2] = pointRGB.b;
+
+        // sizes
+        alphas[i] = 10;        
 
 	}
+    pointGeo.addAttribute('position', new THREE.BufferAttribute(positions, 3));
+    pointGeo.addAttribute('color', new THREE.BufferAttribute(colors, 3));
+    pointGeo.addAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+
 	scatterPlot.add(points);
     console.log(points)
 
@@ -121,32 +142,27 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 
 }
 
-const q = d3.queue()
-    .defer(d3.json, 'data/word2vec_tsne_2d.json')
-    .defer(d3.json, 'data/word2vec_meta.json')
-    .awaitAll((error, results) => {
-        if (error) {
-            console.log('ERROR', error)
-            throw error;
-        }
-        const tsne = results[0],
-              meta = results[1]
-        console.log(meta[0])
-        console.log(meta[1])
-        console.log(meta[2])
-        addPoints(tsne, meta, d => d.coords[0], d => d.coords[1], m => m.meta.groups[0])
-    })
+// const q = d3.queue()
+//     .defer(d3.json, 'data/word2vec_tsne_2d.json')
+//     .defer(d3.json, 'data/word2vec_meta.json')
+//     .awaitAll((error, results) => {
+//         if (error) {
+//             console.log('ERROR', error)
+//             throw error;
+//         }
+//         const tsne = results[0],
+//               meta = results[1]
+//         console.log(meta[0])
+//         console.log(meta[1])
+//         console.log(meta[2])
+//         addPoints(tsne, meta, d => d.coords[0], d => d.coords[1], m => m.meta.groups[0])
+//     })
 
 
-// d3.json('data/word2vec_tsne_2d.json', (data) => {
-// 	console.log(data)
-// 	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
-// })
-
-const unfiltered = [{x: 20, y: 10}, {x: 40, y: 80}, {x: 6, y: 40}, {x: 80, y: 20}, {x: 10, y: 50}]
-
-//addPoints(unfiltered)
-
+d3.json('data/word2vec_tsne_2d.json', (data) => {
+	console.log(data)
+	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
+})
 
 
 
@@ -233,7 +249,7 @@ function animate(t) {
 
         // calculate objects intersecting the picking ray
         var intersects = []
-        intersects = raycaster.intersectObjects(points);
+        //intersects = raycaster.intersectObject(points);
 
 
         var geometry = points.geometry;
