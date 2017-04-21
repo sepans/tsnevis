@@ -14,14 +14,27 @@ camera.position.z = 900
 
 let allMetaData;
 
+const dataSetProperties = {
+    xAccessor: d => d.coords[0],
+    yAccessor: d => d.coords[1],
+    colorAccessor: m => m.meta.groups[0]
+}
+
+const xScale = d3.scaleLinear()
+    .range([margin, w - margin])
+
+const yScale = d3.scaleLinear()
+    .range([margin, h - margin])
+
+const colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
+
+
 let sx = 0,
     sy = 0,
     down = false
 
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
-
-
 
 const metaDivEl = document.getElementById('meta')
       imageEl = document.querySelector('#meta img')
@@ -60,17 +73,9 @@ const points = new THREE.Points(pointGeo, mat);
 
 function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 
-	const xScale = d3.scaleLinear()
-		.domain(d3.extent(dataPoints, xAccessor))
-		.range([margin, w - margin])
+	xScale.domain(d3.extent(dataPoints, xAccessor))
 
-	const yScale = d3.scaleLinear()
-		.domain(d3.extent(dataPoints, yAccessor))
-		.range([margin, h - margin])
-
-    const colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
-
-
+	yScale.domain(d3.extent(dataPoints, yAccessor))
 
 	const pointCount = dataPoints.length;
 
@@ -84,6 +89,7 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
+
         const pointColor = colorScale(metaAccessor(metaData ? metaData[i] : 'x'))
         const pointRGB = hexToRgb(pointColor)
 
@@ -110,7 +116,8 @@ const q = d3.queue()
               meta = results[1]
         console.log(meta[0])
         allMetaData = meta
-        addPoints(tsne, meta, d => d.coords[0], d => d.coords[1], m => m.meta.groups[0])
+        addPoints(tsne, meta, 
+            dataSetProperties.xAccessor, dataSetProperties.yAccessor, dataSetProperties.colorAccessor)
     })
 
 
@@ -171,6 +178,9 @@ function mousewheel(e) {
 let prevHighlight = {}
 let highlightedIndex = -1
 
+let highlightedNodes = []
+const HIGHLIGHT_MODES = {HOVER: 'hover'}
+
 function animate(t) {
     //last = t;
     renderer.clear();
@@ -190,37 +200,45 @@ function animate(t) {
         const intersect = intersects[0]
         const index = intersect.index
 
-        highlightedIndex = index
-        //console.log(prevHighlight[index])
-        Object.keys(prevHighlight).forEach(indexKey => {
-            if(indexKey!==index) {
-                pointGeo.colors[indexKey] = prevHighlight[indexKey]
-                delete prevHighlight[indexKey]
-            }
-        })
+
+        // Object.keys(prevHighlight).forEach(indexKey => {
+        //     if(indexKey!==index) {
+        //         pointGeo.colors[indexKey] = prevHighlight[indexKey]
+        //         delete prevHighlight[indexKey]
+        //     }
+        // })
+    
+        //to change back the color
+        const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.index!==index && node.mode===HIGHLIGHT_MODES.HOVER)
+        resetNodeColors(nodesNoLongerHighlighted)
+
+        //remove previously hovered nodes
+        highlightedNodes = highlightedNodes.filter((node) => node.mode!=HIGHLIGHT_MODES.HOVER)
+
+        highlightedNodes.push({index: index, mode: HIGHLIGHT_MODES.HOVER})
 
 
-        if(!prevHighlight[index]) {
-            prevHighlight[index] = pointGeo.colors[index]
-        }
+        // if(!prevHighlight[index]) {
+        //     prevHighlight[index] = pointGeo.colors[index]
+        // }
 
 
-        pointGeo.colors[index] = new THREE.Color().setRGB( 1, 0.2 , 0.2)
-
+        pointGeo.colors[index] = new THREE.Color().setRGB( 0, 0 , 0)
         points.geometry.colorsNeedUpdate = true
 
-        // const highlightPosition = pointGeo.vertices[index]
-        // highlightPosition.z = 0
-        // pointGeo.vertices[index] = highlightPosition
-        // pointGeo.verticesNeedUpdate = true
+        const highlightPosition = pointGeo.vertices[index]
+        highlightPosition.z = 2
+        pointGeo.vertices[index] = highlightPosition
+        pointGeo.verticesNeedUpdate = true
+
 
         if(allMetaData) {
             const metaData = allMetaData[index].meta
             imageEl.setAttribute('src', metaData.sizes[1].source)
             titleEl.innerText = metaData.title
             categoryEl.innerText = metaData.groups.join(', ')
-            metaDivEl.style.top =  - (mouse.y - 1)/2 * h
-            metaDivEl.style.left = (mouse.x + 1)/2 * w
+            metaDivEl.style.top =  - (mouse.y - 1)/2 * h + 5
+            metaDivEl.style.left = (mouse.x + 1)/2 * w + 5
             metaDivEl.style.opacity = 1
 
         }
@@ -228,12 +246,17 @@ function animate(t) {
 
     }
     if(intersects.length==0) {
-        Object.keys(prevHighlight).forEach(indexKey => {
-            pointGeo.colors[indexKey] = prevHighlight[indexKey]
-            delete prevHighlight[indexKey]
-            points.geometry.colorsNeedUpdate = true
-        })
-        highlightedIndex = -1
+
+        const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.mode===HIGHLIGHT_MODES.HOVER)
+        resetNodeColors(nodesNoLongerHighlighted)
+
+
+        // Object.keys(prevHighlight).forEach(indexKey => {
+        //     pointGeo.colors[indexKey] = prevHighlight[indexKey]
+        //     delete prevHighlight[indexKey]
+        //     points.geometry.colorsNeedUpdate = true
+        // })
+        // highlightedIndex = -1
 
         metaDivEl.style.opacity = 0
 
@@ -247,6 +270,23 @@ function animate(t) {
 };
 animate()//new Date().getTime());
 
+function resetNodeColors(nodesNoLongerHighlighted) {
+
+    nodesNoLongerHighlighted.forEach((node) => {
+
+        const pointColor = colorScale(dataSetProperties.colorAccessor(allMetaData ? allMetaData[node.index] : 'x'))
+        const pointRGB = hexToRgb(pointColor)
+        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
+
+        const highlightPosition = pointGeo.vertices[node.index]
+        highlightPosition.z = 0
+        pointGeo.vertices[node.index] = highlightPosition
+        pointGeo.verticesNeedUpdate = true
+
+
+    })
+
+}
 
 // from http://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
 function hexToRgb(hex) { //TODO rewrite with vector output
