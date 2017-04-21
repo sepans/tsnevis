@@ -1,6 +1,6 @@
 
 
-const w = 1200, h = 800, near = -500, far = 1000, margin = 50
+const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 50
 /*
 const camera = new THREE.OrthographicCamera( w/- 2, w/2, h/2, h/- 2, near, far );
 camera.position.x = w/2;
