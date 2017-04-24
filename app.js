@@ -19,7 +19,8 @@ const dataSetProperties = {
     idAccessor: d => d.id,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
-    colorAccessor: m => m.groups[0]
+    colorAccessor: m => m ? m.groups[0] : 'n/a',
+    imageAccessor: m => m ? m.sizes[1].source : 'n/a'
 }
 
 const xScale = d3.scaleLinear()
@@ -112,8 +113,8 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, metaA
 //load data
 
 const q = d3.queue()
-    .defer(d3.json, 'data/word2vec_tsne_2d.json')
-    //.defer(d3.json, 'data/conv2vec_tsne_026.json')
+    //.defer(d3.json, 'data/word2vec_tsne_2d.json')
+    .defer(d3.json, 'data/conv2vec_tsne_026.json')
     .defer(d3.json, 'data/word2vec_meta_short.json')
     .awaitAll((error, results) => {
         if (error) {
@@ -148,7 +149,7 @@ function createMetaDataOptions() {
     controlsEl.addEventListener('change', e => {
         console.log(e, e.srcElement.selectedIndex)
         const selectedKey = e.srcElement.selectedIndex
-        dataSetProperties.metaAccessor = d => d[keys[selectedKey]]
+        dataSetProperties.metaAccessor = d => d ? d[keys[selectedKey]] : 'n/a'
         changeColors()
     })
 }
@@ -213,7 +214,7 @@ function drawSelectedNodes() {
         if(node.mode===HIGHLIGHT_MODES.SELECTION) {
             if(allMetaData) {
                 const nodeMetaData = getMetaDataByIndex(node.index)
-                selectedNodesHTML = `${selectedNodesHTML} <img src="${nodeMetaData.sizes[0].source}">` 
+                selectedNodesHTML = `${selectedNodesHTML} <img src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
             }
 
         }
@@ -221,24 +222,25 @@ function drawSelectedNodes() {
     selectedNodesEl.innerHTML = selectedNodesHTML
 }
 
-window.onmousedown = (e) => {
+window.addEventListener('mousedown', (e) => {
     mouseDown = true;
     sx = e.clientX;
     sy = e.clientY;
     ssx = e.clientX;
     ssy = e.clientY;
 
-}
-window.onmouseup = (e) => {
+})
+
+window.addEventListener('mouseup', (e) => {
     mouseDown = false;
     if(shiftDown) {
         calculateSelection( ssx,  h - ssy, (sx - ssx), (sy - ssy))
         selectionEl.style.opacity = 0
     }
-}
+})
 
 
-window.onmousemove = (e) => {
+window.addEventListener('mousemove', (e) => {
     if (mouseDown) {
         var dx = e.clientX - sx;
         var dy = e.clientY - sy;
@@ -267,7 +269,7 @@ window.onmousemove = (e) => {
     mouseEl.innerText = e.clientX + ' ' + e.clientY
     mouseEl.style.top = e.clientY
     mouseEl.style.left = e.clientX
-}
+})
 
 window.addEventListener('keydown', (e) => {
    if(e.keyCode===16) {
@@ -282,8 +284,8 @@ window.addEventListener('keyup', (e) => {
 })
 
 
-window.addEventListener( 'mousewheel', mousewheel, false );
-window.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
+renderer.domElement.addEventListener( 'mousewheel', mousewheel, false );
+renderer.domElement.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
 
 const ZOOM_MIN_Z = 100
 	  ZOOM_MAX_Z = 1000
@@ -360,10 +362,10 @@ function animate(t) {
 
 
         if(allMetaData && !shiftDown) {
-            const metaData = getMetaDataByIndex(index)
-            imageEl.setAttribute('src', metaData.sizes[1].source)
-            titleEl.innerText = metaData.title
-            categoryEl.innerText = metaData.groups.join(', ')
+            const nodeMetaData = getMetaDataByIndex(index)
+            imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
+            titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
+            categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
             metaDivEl.style.top =  - (mouse.y - 1)/2 * h + 5
             metaDivEl.style.left = (mouse.x + 1)/2 * w + 5
             metaDivEl.style.opacity = 1
