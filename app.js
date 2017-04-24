@@ -114,7 +114,7 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, metaA
 const q = d3.queue()
     .defer(d3.json, 'data/word2vec_tsne_2d.json')
     //.defer(d3.json, 'data/conv2vec_tsne_026.json')
-    .defer(d3.json, 'data/word2vec_meta.json')
+    .defer(d3.json, 'data/word2vec_meta_short.json')
     .awaitAll((error, results) => {
         if (error) {
             console.log('ERROR', error)
