@@ -53,11 +53,16 @@
     #selectednodes {
         position: absolute;
         right: 0;
-        width: 200px;
+        width: 210px;
     }
 
     #selectednodes img {
         width: 50px;
+    }
+    #controls {
+        position: absolute;
+        z-index: 2;
+        margin: 10px;
     }
 
     </style>
@@ -70,6 +75,7 @@
         <div class="category"></div>
         <img src="">
     </div>
+    <select id="controls"></select>
     <div id="mouse"></div>
     <div id="selection"></div>
     <div id="selectednodes"></div>

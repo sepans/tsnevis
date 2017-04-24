@@ -45,6 +45,7 @@ const metaDivEl = document.getElementById('meta'),
       categoryEl = document.querySelector('#meta .category'),
       selectionEl = document.getElementById('selection'),
       selectedNodesEl = document.getElementById('selectednodes'),
+      controlsEl = document.getElementById('controls'),
       mouseEl = document.getElementById('mouse')
 
 
@@ -110,6 +111,7 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 
 const q = d3.queue()
     .defer(d3.json, 'data/word2vec_tsne_2d.json')
+    //.defer(d3.json, 'data/conv2vec_tsne_026.json')
     .defer(d3.json, 'data/word2vec_meta.json')
     .awaitAll((error, results) => {
         if (error) {
@@ -118,12 +120,44 @@ const q = d3.queue()
         }
         const tsne = results[0],
               meta = results[1]
-        console.log(meta[0])
+        console.log(meta[0], meta.length)
+        console.log(tsne[0], tsne.length)
         allMetaData = meta
+        createMetaDataOptions()
         addPoints(tsne, meta, 
             dataSetProperties.xAccessor, dataSetProperties.yAccessor, dataSetProperties.colorAccessor)
     })
 
+function createMetaDataOptions() {
+    const keys = Object.keys(allMetaData[0].meta)
+    controlsEl.innerHTML = keys.map(key => `<option>${key}</option>`)
+    controlsEl.selectedIndex = 1
+    controlsEl.addEventListener('change', e => {
+        console.log(e, e.srcElement.selectedIndex)
+        const selectedKey = e.srcElement.selectedIndex
+        dataSetProperties.metaAccessor = d => d.meta[keys[selectedKey]]
+        changeColors()
+    })
+}
+
+function changeColors() {
+
+    pointGeo.colors.forEach((color, i) => {
+        const metaAccessor = dataSetProperties.metaAccessor
+        const metaData = allMetaData
+        if(i===0) {
+            console.log(metaAccessor.toString())
+            console.log(metaAccessor(metaData[i]))
+            console.log(metaAccessor(metaData ? metaData[i] : 'x'))
+        }
+        const pointColor = colorScale(metaAccessor(metaData ? metaData[i] : 'x'))
+        const pointRGB = hexToRgb(pointColor)
+
+        pointGeo.colors[i] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255);
+
+    })
+    points.geometry.colorsNeedUpdate = true
+}
 
 // load without metadata. for debugging
 
@@ -141,6 +175,7 @@ function calculateSelection(x, y, width, height) {
     //     //console.log(node)
     //     return node.x >= x && node.x <= x + width && node.y >= y && node.y <= y + height
     // })
+    resetNodeColors(highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION))
     highlightedNodes = []
     pointGeo.vertices.forEach((node, i) => {
         //console.log(node)
