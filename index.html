@@ -35,6 +35,31 @@
         width: 150px;
         height: 150px;
     }
+
+    #selection {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        border: 2px dotted #666;
+        background-color: rgba(200, 200, 200, 0.2);
+    }
+
+    #mouse {
+        position: absolute;
+        font-size: 10px;
+    }
+    #selectednodes {
+        position: absolute;
+        right: 0;
+        width: 200px;
+    }
+
+    #selectednodes img {
+        width: 50px;
+    }
+
     </style>
 
 </head>
@@ -45,6 +70,9 @@
         <div class="category"></div>
         <img src="">
     </div>
+    <div id="mouse"></div>
+    <div id="selection"></div>
+    <div id="selectednodes"></div>
 
 </body>
     <script src="app.js"></script>

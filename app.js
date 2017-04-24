@@ -1,6 +1,6 @@
 
 
-const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 50
+const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 20
 /*
 const camera = new THREE.OrthographicCamera( w/- 2, w/2, h/2, h/- 2, near, far );
 camera.position.x = w/2;
@@ -31,15 +31,21 @@ const colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
 
 let sx = 0,
     sy = 0,
-    down = false
+    ssx = 0,
+    ssy = 0,
+    mouseDown = false,
+    shiftDown = false
 
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
 
-const metaDivEl = document.getElementById('meta')
-      imageEl = document.querySelector('#meta img')
-      titleEl = document.querySelector('#meta .title')
-      categoryEl = document.querySelector('#meta .category')
+const metaDivEl = document.getElementById('meta'),
+      imageEl = document.querySelector('#meta img'),
+      titleEl = document.querySelector('#meta .title'),
+      categoryEl = document.querySelector('#meta .category'),
+      selectionEl = document.getElementById('selection'),
+      selectedNodesEl = document.getElementById('selectednodes'),
+      mouseEl = document.getElementById('mouse')
 
 
 const renderer = new THREE.WebGLRenderer({
@@ -55,8 +61,6 @@ const scene = new THREE.Scene();
 
 const scatterPlot = new THREE.Object3D();
 scene.add(scatterPlot);
-
-console.log('scatter', scatterPlot)
 
 const PARTICLE_SIZE = 5
 
@@ -127,36 +131,107 @@ const q = d3.queue()
 // 	console.log(data)
 // 	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
 // })
+function calculateSelection(x, y, width, height) {
+    console.log(x, y, width, height)
+    // const projector = new THREE.Projector();
+    // const pos3D = new THREE.Vector3(x, y, 0)
+    // const v = projector.projectVector(pos3D, camera);
+    // console.log(v)
+    // const selectedNodes = pointGeo.vertices.filter((node) => {
+    //     //console.log(node)
+    //     return node.x >= x && node.x <= x + width && node.y >= y && node.y <= y + height
+    // })
+    highlightedNodes = []
+    pointGeo.vertices.forEach((node, i) => {
+        //console.log(node)
+        if(node.x > x && node.x < x + width && node.y > y && node.y < y + height) {
+            pointGeo.colors[i] = new THREE.Color().setRGB( .1, .2, .1)
+            points.geometry.colorsNeedUpdate = true
+            highlightedNodes.push({index: i, mode: HIGHLIGHT_MODES.SELECTION})
+        }
+    })
+    drawSelectedNodes()
 
+    //console.log(selectedNodes.length, selectedNodes)
+}
 
+function drawSelectedNodes() {
+    let selectedNodesHTML = ''
+    highlightedNodes.forEach((node) => {
+        if(node.mode===HIGHLIGHT_MODES.SELECTION) {
+            if(allMetaData) {
+                const metaData = allMetaData[node.index].meta
+                selectedNodesHTML = `${selectedNodesHTML} <img src="${metaData.sizes[0].source}">` 
+            }
+
+        }
+    })
+    selectedNodesEl.innerHTML = selectedNodesHTML
+}
 
 window.onmousedown = (e) => {
-    down = true;
+    mouseDown = true;
     sx = e.clientX;
     sy = e.clientY;
+    ssx = e.clientX;
+    ssy = e.clientY;
+
 }
-window.onmouseup = () => {
-    down = false;
+window.onmouseup = (e) => {
+    mouseDown = false;
+    if(shiftDown) {
+        calculateSelection( ssx,  h - ssy, (sx - ssx), (sy - ssy))
+        selectionEl.style.opacity = 0
+    }
 }
+
+
 window.onmousemove = (e) => {
-    if (down) {
+    if (mouseDown) {
         var dx = e.clientX - sx;
         var dy = e.clientY - sy;
         //scatterPlot.rotation.y += dx * 0.01;
-        camera.position.x -= dx;
-        camera.position.y += dy;
         sx += dx;
         sy += dy;
+        if(shiftDown) {
+            selectionEl.style.opacity = 1
+            selectionEl.style.top = Math.min(ssy, sy)
+            selectionEl.style.left = Math.min(ssx, sx)
+            selectionEl.style.width = Math.abs(ssx - sx)+'px'
+            selectionEl.style.height = Math.abs(ssy - sy)+'px'
+        }   
+        else {
+            camera.position.x -= dx;
+            camera.position.y += dy;
+
+        }     
     }
 
     // calculate mouse position in normalized device coordinates
     // (-1 to +1) for both components (for raycasting)
     mouse.x = ( e.clientX / w ) * 2 - 1;
     mouse.y = - ( e.clientY / h ) * 2 + 1;
+
+    mouseEl.innerText = e.clientX + ' ' + e.clientY
+    mouseEl.style.top = e.clientY
+    mouseEl.style.left = e.clientX
 }
 
-document.body.addEventListener( 'mousewheel', mousewheel, false );
-document.body.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
+window.addEventListener('keydown', (e) => {
+   if(e.keyCode===16) {
+        shiftDown = true
+   }
+})
+
+window.addEventListener('keyup', (e) => {
+   if(e.keyCode === 16) {
+        shiftDown = false
+   }
+})
+
+
+window.addEventListener( 'mousewheel', mousewheel, false );
+window.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
 
 const ZOOM_MIN_Z = 100
 	  ZOOM_MAX_Z = 1000
@@ -179,7 +254,7 @@ let prevHighlight = {}
 let highlightedIndex = -1
 
 let highlightedNodes = []
-const HIGHLIGHT_MODES = {HOVER: 'hover'}
+const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
 
 function animate(t) {
     //last = t;
@@ -227,12 +302,12 @@ function animate(t) {
         points.geometry.colorsNeedUpdate = true
 
         const highlightPosition = pointGeo.vertices[index]
-        highlightPosition.z = 2
+        highlightPosition.z = 1
         pointGeo.vertices[index] = highlightPosition
         pointGeo.verticesNeedUpdate = true
 
 
-        if(allMetaData) {
+        if(allMetaData && !shiftDown) {
             const metaData = allMetaData[index].meta
             imageEl.setAttribute('src', metaData.sizes[1].source)
             titleEl.innerText = metaData.title
