@@ -12,12 +12,14 @@ camera.position.x = w/2
 camera.position.y = h/2
 camera.position.z = 900
 
+let allCoords;
 let allMetaData;
 
 const dataSetProperties = {
+    idAccessor: d => d.id,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
-    colorAccessor: m => m.meta.groups[0]
+    colorAccessor: m => m.groups[0]
 }
 
 const xScale = d3.scaleLinear()
@@ -76,7 +78,7 @@ const pointGeo = new THREE.Geometry();
 const points = new THREE.Points(pointGeo, mat);
 
 
-function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
+function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, metaAccessor) {
 
 	xScale.domain(d3.extent(dataPoints, xAccessor))
 
@@ -85,6 +87,7 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 	const pointCount = dataPoints.length //37107
 
 	for (let i = 0; i < pointCount; i ++) {
+        const id = idAccessor(dataPoints[i])
 	    const x = xScale(xAccessor(dataPoints[i]));
 	    const y = yScale(yAccessor(dataPoints[i]));
 	    const z = 0//zScale(unfiltered[i].z);
@@ -94,8 +97,7 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
-
-        const pointColor = colorScale(metaAccessor(metaData ? metaData[i] : 'x'))
+        const pointColor = colorScale(metaAccessor(metaData ? metaData[id] : 'x'))
         const pointRGB = hexToRgb(pointColor)
 
 	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
@@ -122,20 +124,31 @@ const q = d3.queue()
               meta = results[1]
         console.log(meta[0], meta.length)
         console.log(tsne[0], tsne.length)
-        allMetaData = meta
+        allMetaData = createMetaDataMap(results[1])
+        allCoords = tsne
+        createMetaDataMap(meta)
         createMetaDataOptions()
-        addPoints(tsne, meta, 
-            dataSetProperties.xAccessor, dataSetProperties.yAccessor, dataSetProperties.colorAccessor)
+        addPoints(tsne, allMetaData, 
+            dataSetProperties.idAccessor,
+            dataSetProperties.xAccessor, dataSetProperties.yAccessor,
+            dataSetProperties.colorAccessor)
     })
 
+function createMetaDataMap(metaArray) {
+    return metaArray.reduce((acc, cur) => {
+        acc[cur.id] = cur.meta
+        return acc
+    }, {})
+}
+
 function createMetaDataOptions() {
-    const keys = Object.keys(allMetaData[0].meta)
+    const keys = Object.keys(getMetaDataByIndex(0))
     controlsEl.innerHTML = keys.map(key => `<option>${key}</option>`)
     controlsEl.selectedIndex = 1
     controlsEl.addEventListener('change', e => {
         console.log(e, e.srcElement.selectedIndex)
         const selectedKey = e.srcElement.selectedIndex
-        dataSetProperties.metaAccessor = d => d.meta[keys[selectedKey]]
+        dataSetProperties.metaAccessor = d => d[keys[selectedKey]]
         changeColors()
     })
 }
@@ -147,16 +160,20 @@ function changeColors() {
         const metaData = allMetaData
         if(i===0) {
             console.log(metaAccessor.toString())
-            console.log(metaAccessor(metaData[i]))
-            console.log(metaAccessor(metaData ? metaData[i] : 'x'))
+            console.log(getMetaDataByIndex(i))
+            console.log(metaAccessor(getMetaDataByIndex(i)))
         }
-        const pointColor = colorScale(metaAccessor(metaData ? metaData[i] : 'x'))
+        const pointColor = colorScale(metaAccessor(getMetaDataByIndex(i)))
         const pointRGB = hexToRgb(pointColor)
 
         pointGeo.colors[i] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255);
 
     })
     points.geometry.colorsNeedUpdate = true
+}
+
+function getMetaDataByIndex(index) {
+    return allMetaData[dataSetProperties.idAccessor(allCoords[index])]
 }
 
 // load without metadata. for debugging
@@ -195,8 +212,8 @@ function drawSelectedNodes() {
     highlightedNodes.forEach((node) => {
         if(node.mode===HIGHLIGHT_MODES.SELECTION) {
             if(allMetaData) {
-                const metaData = allMetaData[node.index].meta
-                selectedNodesHTML = `${selectedNodesHTML} <img src="${metaData.sizes[0].source}">` 
+                const nodeMetaData = getMetaDataByIndex(node.index)
+                selectedNodesHTML = `${selectedNodesHTML} <img src="${nodeMetaData.sizes[0].source}">` 
             }
 
         }
@@ -343,7 +360,7 @@ function animate(t) {
 
 
         if(allMetaData && !shiftDown) {
-            const metaData = allMetaData[index].meta
+            const metaData = getMetaDataByIndex(index)
             imageEl.setAttribute('src', metaData.sizes[1].source)
             titleEl.innerText = metaData.title
             categoryEl.innerText = metaData.groups.join(', ')
@@ -384,7 +401,8 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
     nodesNoLongerHighlighted.forEach((node) => {
 
-        const pointColor = colorScale(dataSetProperties.colorAccessor(allMetaData ? allMetaData[node.index] : 'x'))
+        const nodeMeta = getMetaDataByIndex(node.index)
+        const pointColor = colorScale(dataSetProperties.colorAccessor(nodeMeta))
         const pointRGB = hexToRgb(pointColor)
         pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
 
