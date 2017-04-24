@@ -82,7 +82,7 @@ function addPoints(dataPoints, metaData, xAccessor, yAccessor, metaAccessor) {
 
 	yScale.domain(d3.extent(dataPoints, yAccessor))
 
-	const pointCount = dataPoints.length;
+	const pointCount = dataPoints.length //37107
 
 	for (let i = 0; i < pointCount; i ++) {
 	    const x = xScale(xAccessor(dataPoints[i]));
