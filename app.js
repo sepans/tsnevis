@@ -41,6 +41,7 @@ let sx = 0,
 
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
+const mouseStart = new THREE.Vector2()
 
 const metaDivEl = document.getElementById('meta'),
       imageEl = document.querySelector('#meta img'),
@@ -72,7 +73,6 @@ const mat = new THREE.PointsMaterial({
     vertexColors: true,
     size: PARTICLE_SIZE
 });
-
 
 
 const pointGeo = new THREE.Geometry();
@@ -183,29 +183,37 @@ function getMetaDataByIndex(index) {
 // 	console.log(data)
 // 	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
 // })
-function calculateSelection(x, y, width, height) {
-    console.log(x, y, width, height)
-    // const projector = new THREE.Projector();
-    // const pos3D = new THREE.Vector3(x, y, 0)
-    // const v = projector.projectVector(pos3D, camera);
-    // console.log(v)
-    // const selectedNodes = pointGeo.vertices.filter((node) => {
-    //     //console.log(node)
-    //     return node.x >= x && node.x <= x + width && node.y >= y && node.y <= y + height
-    // })
+function calculateSelection() {
+
+
+    const topLeft = intersectWithBackPlane(mouseStart)
+    const bottomRight = intersectWithBackPlane(mouse)
+
     resetNodeColors(highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION))
     highlightedNodes = []
     pointGeo.vertices.forEach((node, i) => {
-        //console.log(node)
-        if(node.x > x && node.x < x + width && node.y > y && node.y < y + height) {
-            pointGeo.colors[i] = new THREE.Color().setRGB( .1, .2, .1)
+
+        if((node.x - topLeft.x > 0 && node.x - bottomRight.x < 0 || node.x - topLeft.x < 0 && node.x - bottomRight.x > 0) &&
+           (node.y - topLeft.y > 0 && node.y - bottomRight.y < 0 || node.y - topLeft.y < 0 && node.y - bottomRight.y > 0) ) {
+            const pointColor = pointGeo.colors[i]
+            pointColor.setRGB(pointColor.r * 0.6 , pointColor.g * 0.6 , pointColor.b * 0.6 )
             points.geometry.colorsNeedUpdate = true
             highlightedNodes.push({index: i, mode: HIGHLIGHT_MODES.SELECTION})
         }
     })
+
+ 
     drawSelectedNodes()
 
-    //console.log(selectedNodes.length, selectedNodes)
+ }
+
+ const backgroundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+
+// finds the intersection between ray and background flat plane
+function intersectWithBackPlane(vector2) {
+    
+    raycaster.setFromCamera( vector2, camera );
+    return raycaster.ray.intersectPlane(backgroundPlane)
 }
 
 function drawSelectedNodes() {
@@ -229,12 +237,16 @@ window.addEventListener('mousedown', (e) => {
     ssx = e.clientX;
     ssy = e.clientY;
 
+    mouseStart.x = ( e.clientX / w ) * 2 - 1;
+    mouseStart.y = - ( e.clientY / h ) * 2 + 1;
+
+
 })
 
 window.addEventListener('mouseup', (e) => {
     mouseDown = false;
     if(shiftDown) {
-        calculateSelection( ssx,  h - ssy, (sx - ssx), (sy - ssy))
+        calculateSelection()
         selectionEl.style.opacity = 0
     }
 })
@@ -273,6 +285,7 @@ window.addEventListener('mousemove', (e) => {
 
 window.addEventListener('keydown', (e) => {
    if(e.keyCode===16) {
+         document.body.style.cursor = 'crosshair'
         shiftDown = true
    }
 })
@@ -280,12 +293,13 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
    if(e.keyCode === 16) {
         shiftDown = false
+        document.body.style.cursor = 'pointer'
    }
 })
 
 
-renderer.domElement.addEventListener( 'mousewheel', mousewheel, false );
-renderer.domElement.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
+window.addEventListener( 'mousewheel', mousewheel, false );
+window.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
 
 const ZOOM_MIN_Z = 100
 	  ZOOM_MAX_Z = 1000
@@ -327,6 +341,7 @@ function animate(t) {
         
 
         const intersect = intersects[0]
+        //console.log(intersect.object.type)
         const index = intersect.index
 
 
@@ -356,13 +371,13 @@ function animate(t) {
         points.geometry.colorsNeedUpdate = true
 
         const highlightPosition = pointGeo.vertices[index]
-        highlightPosition.z = 1
+        highlightPosition.z = 0.5
         pointGeo.vertices[index] = highlightPosition
         pointGeo.verticesNeedUpdate = true
 
 
-        if(allMetaData && !shiftDown) {
-            const nodeMetaData = getMetaDataByIndex(index)
+        const nodeMetaData = getMetaDataByIndex(index)
+        if(nodeMetaData && !shiftDown) {
             imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
             titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
             categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
@@ -374,6 +389,7 @@ function animate(t) {
 
 
     }
+    
     if(intersects.length==0) {
 
         const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.mode===HIGHLIGHT_MODES.HOVER)
@@ -391,7 +407,8 @@ function animate(t) {
 
 
 
-    }       
+    }   
+        
     //camera.lookAt(scene.position);
     renderer.render(scene, camera);
 
@@ -420,10 +437,10 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
 // from http://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
 function hexToRgb(hex) { //TODO rewrite with vector output
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
     return result ? {
         r: parseInt(result[1], 16),
         g: parseInt(result[2], 16),
         b: parseInt(result[3], 16)
-    } : null;
+    } : null
 }
