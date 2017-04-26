@@ -8,11 +8,12 @@ const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
 const ZOOM_MIN_Z = 100
       ZOOM_MAX_Z = 1000
 
+const HOVER_TOl = 10
+
 const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
 camera.position.x = w/2
 camera.position.y = h/2
 camera.position.z = 900
-
 
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
@@ -68,13 +69,16 @@ let sx = 0,
     ssx = 0,
     ssy = 0,
     mouseDown = false,
-    shiftDown = false
+    shiftDown = false,
+    overSelectedNodes = false
+
 
 
 const metaDivEl = document.getElementById('meta'),
       imageEl = document.querySelector('#meta img'),
       titleEl = document.querySelector('#meta .title'),
       categoryEl = document.querySelector('#meta .category'),
+      timeEl = document.querySelector('#meta .time'),
       selectionEl = document.getElementById('selection'),
       selectedNodesEl = document.getElementById('selectednodes'),
       controlsEl = document.getElementById('controls'),
@@ -192,7 +196,8 @@ function calculateSelection() {
     const topLeft = intersectWithBackPlane(mouseStart)
     const bottomRight = intersectWithBackPlane(mouse)
 
-    resetNodeColors(highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION))
+    const nodesNoLongerHighlighted = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
+    resetNodeColors(nodesNoLongerHighlighted)
     highlightedNodes = []
     pointGeo.vertices.forEach((node, i) => {
 
@@ -232,19 +237,122 @@ function drawSelectedNodes() {
     })
     selectedNodesEl.innerHTML = selectedNodesHTML;
 
-    //setTimeout(() => {
-        [].forEach.call(document.querySelectorAll('#selectednodes img'), (img) => {
-            img.addEventListener('click', nodePreviewImageClicked)
-        })
+    [].forEach.call(document.querySelectorAll('#selectednodes img'), (img) => {
+        img.addEventListener('click', nodePreviewImageClicked)
+    })
 
-    //}, 1000)
 
 }
 
 function nodePreviewImageClicked(e) {
     const index = parseInt(e.srcElement.getAttribute('__data_index'))
-    //showMetaBox(index, true)
+    showMetaBox(index, true)
 }
+
+function hoverHighlightFast() {
+    if(overSelectedNodes) {
+        return
+    }
+    const mouse3D = intersectWithBackPlane(mouse)
+
+    const newHighlightedNodes = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
+    for(let i = 0; i < pointGeo.vertices.length; i++) {
+    //pointGeo.vertices.forEach((node, i) => {
+        const node = pointGeo.vertices[i]
+        const distance = UTILS.calculateDistance(mouse3D.x, mouse3D.y, node.x, node.y)
+        //console.log(mouse3D, node, distance)
+        if(distance < HOVER_TOl) {
+            //console.log(i, distance, mouse3D, node)
+            newHighlightedNodes.push({index: i, distance: distance, mode: HIGHLIGHT_MODES.HOVER})
+
+
+        }
+        
+    //})
+    }
+    newHighlightedNodes.sort((a, b) => a.distance - b.distance)
+    const newHighlightedNode = newHighlightedNodes[0]
+
+    const nodesNoLongerHighlighted = highlightedNodes.filter((node) => {
+
+        return node.mode === HIGHLIGHT_MODES.HOVER && (newHighlightedNode==undefined || newHighlightedNode.index!==node.index)
+    })
+    resetNodeColors(nodesNoLongerHighlighted)
+
+    highlightedNodes = newHighlightedNodes
+
+    highlightHoveredNodes()
+    //console.log(highlightedNodes)
+
+}
+
+function highlightHoveredNodes() {
+
+    const sortedHighlights = highlightedNodes.filter((node) => node.mode === HIGHLIGHT_MODES.HOVER)
+
+    if(sortedHighlights.length===0) {
+        points.geometry.colorsNeedUpdate = true
+        //TODO move this to showMetaBox?
+        metaDivEl.style.opacity = 0
+        return
+    }
+    const currentHighlight = sortedHighlights[0]
+    const index = currentHighlight.index
+
+    pointGeo.colors[index] = new THREE.Color().setRGB( 0, 0 , 0)
+
+    points.geometry.colorsNeedUpdate = true
+
+    const highlightPosition = pointGeo.vertices[index]
+    highlightPosition.z = 0.5
+    pointGeo.vertices[index] = highlightPosition
+    pointGeo.verticesNeedUpdate = true
+
+    showMetaBox(index, false)
+
+}
+
+function showMetaBox(index, pointPosition) {
+
+    const nodeMetaData = getMetaDataByIndex(index)
+    if(nodeMetaData) {
+        imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
+        titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
+        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
+        timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date).toString().substring(0, 25) : ''
+        //if pointPosition calculate point position otherwise use mouse location
+        const x = !pointPosition ? (mouse.x + 1)/2 * w + 5 :  xScale(dataSetProperties.xAccessor(allCoords[index]))
+        const y = !pointPosition ? - (mouse.y - 1)/2 * h + 5 : h - yScale(dataSetProperties.yAccessor(allCoords[index]))
+        metaDivEl.style.top = y
+        metaDivEl.style.left = x
+
+        metaDivEl.style.opacity = 1
+
+    }    
+
+}
+
+
+function resetNodeColors(nodesNoLongerHighlighted) {
+    //console.log('reseting ', nodesNoLongerHighlighted)
+
+    nodesNoLongerHighlighted.forEach((node) => {
+
+        const nodeMeta = getMetaDataByIndex(node.index)
+        const pointColor = colorScale(dataSetProperties.colorAccessor(nodeMeta))
+        const pointRGB = UTILS.hexToRgb(pointColor)
+        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
+
+        const highlightPosition = pointGeo.vertices[node.index]
+        highlightPosition.z = 0
+        pointGeo.vertices[node.index] = highlightPosition
+        pointGeo.verticesNeedUpdate = true
+
+
+    })
+
+}
+
 
 window.addEventListener('mousedown', (e) => {
     mouseDown = true;
@@ -323,6 +431,8 @@ selectedNodesEl.addEventListener( 'mousewheel', (e) => { e.stopPropagation() }, 
 selectedNodesEl.addEventListener( 'DOMMouseScroll', (e) => { e.stopPropagation() }, false ); // firefox
 
 selectedNodesEl.addEventListener( 'mousemove', (e) => { e.stopPropagation() }, false ); // firefox
+selectedNodesEl.addEventListener( 'mouseover', (e) => { overSelectedNodes = true }, false ); // firefox
+selectedNodesEl.addEventListener( 'mouseout', (e) => { overSelectedNodes = false }, false ); // firefox
 
 
 function mousewheel(e) {
@@ -340,176 +450,6 @@ function mousewheel(e) {
     cPos.z = newZ;
 }
 
-function hoverHighlightFast() {
-    const HOVER_TOl = 10
-    const mouse3D = intersectWithBackPlane(mouse)
-
-    const newHighlightedNodes = []
-    for(let i = 0; i < pointGeo.vertices.length; i++) {
-    //pointGeo.vertices.forEach((node, i) => {
-        const node = pointGeo.vertices[i]
-        const distance = UTILS.calculateDistance(mouse3D.x, mouse3D.y, node.x, node.y)
-        //console.log(mouse3D, node, distance)
-        if(distance < HOVER_TOl) {
-            //console.log(i, distance, mouse3D, node)
-            newHighlightedNodes.push({index: i, distance: distance, mode: HIGHLIGHT_MODES.HOVER})
-
-
-        }
-        
-    //})
-    }
-    newHighlightedNodes.sort((a, b) => a.distance - b.distance)
-    const newHighlightedNode = newHighlightedNodes[0]
-
-    const nodesNoLongerHighlighted = highlightedNodes.filter((node) => {
-
-        return node.mode === HIGHLIGHT_MODES.HOVER && (newHighlightedNode==undefined || newHighlightedNode.index!==node.index)
-    })
-    resetNodeColors(nodesNoLongerHighlighted)
-
-    highlightedNodes = newHighlightedNodes
-
-    highlightHoveredNodes()
-    //console.log(highlightedNodes)
-
-}
-
-function highlightHoveredNodes() {
-
-    const sortedHighlights = highlightedNodes.filter((node) => node.mode === HIGHLIGHT_MODES.HOVER)
-
-    if(sortedHighlights.length===0) {
-        points.geometry.colorsNeedUpdate = true
-        //TODO move this to showMetaBox?
-        console.log(11)
-        metaDivEl.style.opacity = 0
-        return
-    }
-    const currentHighlight = sortedHighlights[0]
-    const index = currentHighlight.index
-
-    pointGeo.colors[index] = new THREE.Color().setRGB( 0, 0 , 0)
-
-    points.geometry.colorsNeedUpdate = true
-
-    const highlightPosition = pointGeo.vertices[index]
-    highlightPosition.z = 0.5
-    pointGeo.vertices[index] = highlightPosition
-    pointGeo.verticesNeedUpdate = true
-
-    showMetaBox(index)
-
-}
-
-function showMetaBox(index, debug) {
-
-    const nodeMetaData = getMetaDataByIndex(index)
-    if(nodeMetaData) {
-        imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
-        titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
-        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
-        metaDivEl.style.top =  - (mouse.y - 1)/2 * h + 5
-        metaDivEl.style.left = (mouse.x + 1)/2 * w + 5
-        metaDivEl.style.opacity = 1
-        if(debug) {
-            console.log(nodeMetaData)
-            console.log(metaDivEl)
-        }
-        else {
-            console.log(index)
-        }
-
-    }    
-
-}
-
-/*
-function hoverHighlight() {
-    raycaster.setFromCamera( mouse, camera );
-
-    // calculate objects intersecting the picking ray
-    var intersects = []
-    intersects = raycaster.intersectObjects(scene.children, true);
-
-
-    // just higlight one point!!!
-    for ( var i = 0; i < Math.min(intersects.length, 1); i++ ) {
-
-        
-
-        const intersect = intersects[0]
-        //console.log(intersect.object.type)
-        const index = intersect.index
-
-
-    
-        //to change back the color
-        const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.index!==index && node.mode===HIGHLIGHT_MODES.HOVER)
-        resetNodeColors(nodesNoLongerHighlighted)
-
-        //remove previously hovered nodes
-        highlightedNodes = highlightedNodes.filter((node) => node.mode!=HIGHLIGHT_MODES.HOVER)
-
-        highlightedNodes.push({index: index, mode: HIGHLIGHT_MODES.HOVER})
-
-
-
-        pointGeo.colors[index] = new THREE.Color().setRGB( 0, 0 , 0)
-        points.geometry.colorsNeedUpdate = true
-
-        const highlightPosition = pointGeo.vertices[index]
-        highlightPosition.z = 0.5
-        pointGeo.vertices[index] = highlightPosition
-        pointGeo.verticesNeedUpdate = true
-
-
-        const nodeMetaData = getMetaDataByIndex(index)
-        if(nodeMetaData && !shiftDown) {
-            imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
-            titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
-            categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
-            metaDivEl.style.top =  - (mouse.y - 1)/2 * h + 5
-            metaDivEl.style.left = (mouse.x + 1)/2 * w + 5
-            metaDivEl.style.opacity = 1
-
-        }
-
-
-    }
-    
-    if(intersects.length==0) {
-
-        const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.mode===HIGHLIGHT_MODES.HOVER)
-        resetNodeColors(nodesNoLongerHighlighted)
-
-
-        metaDivEl.style.opacity = 0
-
-
-
-    }  
-}
-*/
-
-function resetNodeColors(nodesNoLongerHighlighted) {
-
-    nodesNoLongerHighlighted.forEach((node) => {
-
-        const nodeMeta = getMetaDataByIndex(node.index)
-        const pointColor = colorScale(dataSetProperties.colorAccessor(nodeMeta))
-        const pointRGB = UTILS.hexToRgb(pointColor)
-        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
-
-        const highlightPosition = pointGeo.vertices[node.index]
-        highlightPosition.z = 0
-        pointGeo.vertices[node.index] = highlightPosition
-        pointGeo.verticesNeedUpdate = true
-
-
-    })
-
-}
 
 function animate() {
     //last = t;
