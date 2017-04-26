@@ -1,22 +1,47 @@
 
 
 const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 20
-/*
-const camera = new THREE.OrthographicCamera( w/- 2, w/2, h/2, h/- 2, near, far );
-camera.position.x = w/2;
-camera.position.y = h/2;
-camera.position.z = 900;
-*/
-var camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
+
+const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
 camera.position.x = w/2
 camera.position.y = h/2
 camera.position.z = 900
+
+
+const raycaster = new THREE.Raycaster()
+const mouse = new THREE.Vector2()
+const mouseStart = new THREE.Vector2()
+
+const renderer = new THREE.WebGLRenderer({
+    antialias: true
+})
+
+renderer.setSize(w, h);
+document.body.appendChild(renderer.domElement);
+renderer.setClearColor(0xFFFFFF, 1.0);
+
+const scene = new THREE.Scene();
+
+const scatterPlot = new THREE.Object3D();
+scene.add(scatterPlot);
+
+const PARTICLE_SIZE = 5
+
+const mat = new THREE.PointsMaterial({
+    vertexColors: true,
+    size: PARTICLE_SIZE
+});
+
+
+const pointGeo = new THREE.Geometry();
+const points = new THREE.Points(pointGeo, mat);
 
 let allCoords;
 let allMetaData;
 
 const dataSetProperties = {
     idAccessor: d => d.id,
+    metaDataAccessor: d => d.meta,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
     colorAccessor: m => m ? m.groups[0] : 'n/a',
@@ -39,9 +64,6 @@ let sx = 0,
     mouseDown = false,
     shiftDown = false
 
-const raycaster = new THREE.Raycaster()
-const mouse = new THREE.Vector2()
-const mouseStart = new THREE.Vector2()
 
 const metaDivEl = document.getElementById('meta'),
       imageEl = document.querySelector('#meta img'),
@@ -53,30 +75,7 @@ const metaDivEl = document.getElementById('meta'),
       mouseEl = document.getElementById('mouse')
 
 
-const renderer = new THREE.WebGLRenderer({
-    antialias: true
-})
 
-renderer.setSize(w, h);
-document.body.appendChild(renderer.domElement);
-
-renderer.setClearColor(0xFFFFFF, 1.0);
-
-const scene = new THREE.Scene();
-
-const scatterPlot = new THREE.Object3D();
-scene.add(scatterPlot);
-
-const PARTICLE_SIZE = 5
-
-const mat = new THREE.PointsMaterial({
-    vertexColors: true,
-    size: PARTICLE_SIZE
-});
-
-
-const pointGeo = new THREE.Geometry();
-const points = new THREE.Points(pointGeo, mat);
 
 
 function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, metaAccessor) {
@@ -99,7 +98,7 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, metaA
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
         const pointColor = colorScale(metaAccessor(metaData ? metaData[id] : 'x'))
-        const pointRGB = hexToRgb(pointColor)
+        const pointRGB = UTILS.hexToRgb(pointColor)
 
 	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
 
@@ -125,9 +124,11 @@ const q = d3.queue()
               meta = results[1]
         console.log(meta[0], meta.length)
         console.log(tsne[0], tsne.length)
-        allMetaData = createMetaDataMap(results[1])
+        allMetaData = UTILS.createMetaDataMap(results[1], 
+                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         allCoords = tsne
-        createMetaDataMap(meta)
+        UTILS.createMetaDataMap(meta, 
+                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         createMetaDataOptions()
         addPoints(tsne, allMetaData, 
             dataSetProperties.idAccessor,
@@ -135,12 +136,6 @@ const q = d3.queue()
             dataSetProperties.colorAccessor)
     })
 
-function createMetaDataMap(metaArray) {
-    return metaArray.reduce((acc, cur) => {
-        acc[cur.id] = cur.meta
-        return acc
-    }, {})
-}
 
 function createMetaDataOptions() {
     const keys = Object.keys(getMetaDataByIndex(0))
@@ -165,7 +160,7 @@ function changeColors() {
             console.log(metaAccessor(getMetaDataByIndex(i)))
         }
         const pointColor = colorScale(metaAccessor(getMetaDataByIndex(i)))
-        const pointRGB = hexToRgb(pointColor)
+        const pointRGB = UTILS.hexToRgb(pointColor)
 
         pointGeo.colors[i] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255);
 
@@ -277,10 +272,11 @@ window.addEventListener('mousemove', (e) => {
     // (-1 to +1) for both components (for raycasting)
     mouse.x = ( e.clientX / w ) * 2 - 1;
     mouse.y = - ( e.clientY / h ) * 2 + 1;
-
+    /*
     mouseEl.innerText = e.clientX + ' ' + e.clientY
     mouseEl.style.top = e.clientY
     mouseEl.style.left = e.clientX
+    */
 })
 
 window.addEventListener('keydown', (e) => {
@@ -318,16 +314,10 @@ function mousewheel(e) {
     cPos.z = newZ;
 }
 
-let prevHighlight = {}
-let highlightedIndex = -1
-
 let highlightedNodes = []
 const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
 
-function animate(t) {
-    //last = t;
-    renderer.clear();
-    //console.log(mouse)
+function hoverHighlight() {
     raycaster.setFromCamera( mouse, camera );
 
     // calculate objects intersecting the picking ray
@@ -345,12 +335,6 @@ function animate(t) {
         const index = intersect.index
 
 
-        // Object.keys(prevHighlight).forEach(indexKey => {
-        //     if(indexKey!==index) {
-        //         pointGeo.colors[indexKey] = prevHighlight[indexKey]
-        //         delete prevHighlight[indexKey]
-        //     }
-        // })
     
         //to change back the color
         const nodesNoLongerHighlighted = highlightedNodes.filter((node) => node.index!==index && node.mode===HIGHLIGHT_MODES.HOVER)
@@ -361,10 +345,6 @@ function animate(t) {
 
         highlightedNodes.push({index: index, mode: HIGHLIGHT_MODES.HOVER})
 
-
-        // if(!prevHighlight[index]) {
-        //     prevHighlight[index] = pointGeo.colors[index]
-        // }
 
 
         pointGeo.colors[index] = new THREE.Color().setRGB( 0, 0 , 0)
@@ -396,25 +376,12 @@ function animate(t) {
         resetNodeColors(nodesNoLongerHighlighted)
 
 
-        // Object.keys(prevHighlight).forEach(indexKey => {
-        //     pointGeo.colors[indexKey] = prevHighlight[indexKey]
-        //     delete prevHighlight[indexKey]
-        //     points.geometry.colorsNeedUpdate = true
-        // })
-        // highlightedIndex = -1
-
         metaDivEl.style.opacity = 0
 
 
 
-    }   
-        
-    //camera.lookAt(scene.position);
-    renderer.render(scene, camera);
-
-    window.requestAnimationFrame(animate, renderer.domElement);
-};
-animate()//new Date().getTime());
+    }  
+}
 
 function resetNodeColors(nodesNoLongerHighlighted) {
 
@@ -422,7 +389,7 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
         const nodeMeta = getMetaDataByIndex(node.index)
         const pointColor = colorScale(dataSetProperties.colorAccessor(nodeMeta))
-        const pointRGB = hexToRgb(pointColor)
+        const pointRGB = UTILS.hexToRgb(pointColor)
         pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
 
         const highlightPosition = pointGeo.vertices[node.index]
@@ -435,12 +402,19 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
 }
 
-// from http://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
-function hexToRgb(hex) { //TODO rewrite with vector output
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-    return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-    } : null
-}
+function animate() {
+    //last = t;
+    renderer.clear();
+    //console.log(mouse)
+    hoverHighlight() 
+        
+    //camera.lookAt(scene.position);
+    renderer.render(scene, camera);
+
+    window.requestAnimationFrame(animate, renderer.domElement);
+};
+
+animate()//new Date().getTime());
+
+
+
