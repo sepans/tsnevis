@@ -378,7 +378,7 @@ function highlightHoveredNodes() {
 function showMetaBox(index) {
 
     const nodeMetaData = getMetaDataByIndex(index)
-    if(nodeMetaData && !shiftDown) {
+    if(nodeMetaData) {
         imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
         titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
         categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
@@ -482,7 +482,13 @@ function animate() {
     renderer.clear();
     //console.log(mouse)
     //hoverHighlight() 
-    hoverHighlightFast()
+    if(!shiftDown && !mouseDown) {
+        hoverHighlightFast()
+
+    }
+    else {
+        metaDivEl.style.opacity = 0
+    }
 
     //camera.lookAt(scene.position);
     renderer.render(scene, camera);
