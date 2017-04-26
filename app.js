@@ -5,6 +5,9 @@ const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, ma
 let highlightedNodes = []
 const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
 
+const ZOOM_MIN_Z = 100
+      ZOOM_MAX_Z = 1000
+
 const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
 camera.position.x = w/2
 camera.position.y = h/2
@@ -79,8 +82,6 @@ const metaDivEl = document.getElementById('meta'),
 
 
 
-
-
 function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, colorAccessor) {
 
 	xScale.domain(d3.extent(dataPoints, xAccessor))
@@ -144,12 +145,15 @@ function createMetaDataOptions() {
     const keys = Object.keys(getMetaDataByIndex(0))
     controlsEl.innerHTML = keys.map(key => `<option>${key}</option>`)
     controlsEl.selectedIndex = 1
-    controlsEl.addEventListener('change', e => {
-        console.log(e, e.srcElement.selectedIndex)
-        const selectedKey = e.srcElement.selectedIndex
-        dataSetProperties.colorAccessor = d => d ? d[keys[selectedKey]] : 'n/a'
-        changeColors(true)
-    })
+    controlsEl.addEventListener('change', (e) => {
+      colorOptionChanged(e.srcElement.selectedIndex, keys)  
+    }) 
+}
+
+function colorOptionChanged(index, keys) {
+
+    dataSetProperties.colorAccessor = d => d ? d[keys[index]] : 'n/a'
+    changeColors(true)
 }
 
 function changeColors(setNeedUpdate) {
@@ -170,6 +174,10 @@ function changeColors(setNeedUpdate) {
 
 function getMetaDataByIndex(index) {
     return allMetaData[dataSetProperties.idAccessor(allCoords[index])]
+}
+
+function getIdByIndex(index) {
+    return dataSetProperties.idAccessor(allCoords[index])
 }
 
 // load without metadata. for debugging
@@ -217,12 +225,25 @@ function drawSelectedNodes() {
         if(node.mode===HIGHLIGHT_MODES.SELECTION) {
             if(allMetaData) {
                 const nodeMetaData = getMetaDataByIndex(node.index)
-                selectedNodesHTML = `${selectedNodesHTML} <img src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
+                selectedNodesHTML = `${selectedNodesHTML} <img __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
             }
 
         }
     })
-    selectedNodesEl.innerHTML = selectedNodesHTML
+    selectedNodesEl.innerHTML = selectedNodesHTML;
+
+    //setTimeout(() => {
+        [].forEach.call(document.querySelectorAll('#selectednodes img'), (img) => {
+            img.addEventListener('click', nodePreviewImageClicked)
+        })
+
+    //}, 1000)
+
+}
+
+function nodePreviewImageClicked(e) {
+    const index = parseInt(e.srcElement.getAttribute('__data_index'))
+    //showMetaBox(index, true)
 }
 
 window.addEventListener('mousedown', (e) => {
@@ -289,7 +310,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
    if(e.keyCode === 16) {
         shiftDown = false
-        document.body.style.cursor = 'pointer'
+        document.body.style.cursor = 'default'
    }
 })
 
@@ -297,10 +318,15 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener( 'mousewheel', mousewheel, false );
 window.addEventListener( 'DOMMouseScroll', mousewheel, false ); // firefox
 
-const ZOOM_MIN_Z = 100
-	  ZOOM_MAX_Z = 1000
+//don't zoom when on images
+selectedNodesEl.addEventListener( 'mousewheel', (e) => { e.stopPropagation() }, false );
+selectedNodesEl.addEventListener( 'DOMMouseScroll', (e) => { e.stopPropagation() }, false ); // firefox
+
+selectedNodesEl.addEventListener( 'mousemove', (e) => { e.stopPropagation() }, false ); // firefox
+
 
 function mousewheel(e) {
+    console.log(e)
 	let d = ((typeof e.wheelDelta != "undefined")?(-e.wheelDelta):e.detail);
     d = 100 * ((d>0)?1:-1);    
     const cPos = camera.position;
@@ -356,6 +382,7 @@ function highlightHoveredNodes() {
     if(sortedHighlights.length===0) {
         points.geometry.colorsNeedUpdate = true
         //TODO move this to showMetaBox?
+        console.log(11)
         metaDivEl.style.opacity = 0
         return
     }
@@ -375,7 +402,7 @@ function highlightHoveredNodes() {
 
 }
 
-function showMetaBox(index) {
+function showMetaBox(index, debug) {
 
     const nodeMetaData = getMetaDataByIndex(index)
     if(nodeMetaData) {
@@ -385,6 +412,13 @@ function showMetaBox(index) {
         metaDivEl.style.top =  - (mouse.y - 1)/2 * h + 5
         metaDivEl.style.left = (mouse.x + 1)/2 * w + 5
         metaDivEl.style.opacity = 1
+        if(debug) {
+            console.log(nodeMetaData)
+            console.log(metaDivEl)
+        }
+        else {
+            console.log(index)
+        }
 
     }    
 
