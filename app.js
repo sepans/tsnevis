@@ -8,6 +8,8 @@ const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
 const ZOOM_MIN_Z = 100
       ZOOM_MAX_Z = 1000
 
+const logScale = d3.scaleLog()
+
 const HOVER_TOl = 10
 
 const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
@@ -32,7 +34,7 @@ const scene = new THREE.Scene();
 const scatterPlot = new THREE.Object3D();
 scene.add(scatterPlot);
 
-const PARTICLE_SIZE = 5
+const PARTICLE_SIZE = 4
 
 const mat = new THREE.PointsMaterial({
     vertexColors: true,
@@ -46,13 +48,20 @@ const points = new THREE.Points(pointGeo, mat);
 let allCoords;
 let allMetaData;
 
+const COLUMN_TYPES = {DATE: 'DATE', NUMBER: 'NUMBER'}
+
 const dataSetProperties = {
     idAccessor: d => d.id,
     metaDataAccessor: d => d.meta,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
-    colorAccessor: m => m ? m.groups[0] : 'n/a',
-    imageAccessor: m => m ? m.sizes[1].source : 'n/a'
+    colorAccessor: m => m ? m.groups[0] : null,
+    imageAccessor: m => m ? m.sizes[1].source : null,
+    metaColumnTypes: {
+        'date': COLUMN_TYPES.DATE,
+        'comments': COLUMN_TYPES.NUMBER,
+        'views': COLUMN_TYPES.NUMBER,
+    }
 }
 
 const xScale = d3.scaleLinear()
@@ -61,7 +70,7 @@ const xScale = d3.scaleLinear()
 const yScale = d3.scaleLinear()
     .range([margin, h - margin])
 
-const colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
+let colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
 
 
 let sx = 0,
@@ -85,7 +94,7 @@ const metaDivEl = document.getElementById('meta'),
       mouseEl = document.getElementById('mouse')
 
 
-
+//TODO metaData no longer needed?!
 function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, colorAccessor) {
 
 	xScale.domain(d3.extent(dataPoints, xAccessor))
@@ -105,8 +114,7 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
-        const pointColor = colorScale(colorAccessor(metaData ? metaData[id] : 'x'))
-        const pointRGB = UTILS.hexToRgb(pointColor)
+        const pointRGB = getRGBColorByIndex(i)
 
 	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
 
@@ -156,17 +164,63 @@ function createMetaDataOptions() {
 
 function colorOptionChanged(index, keys) {
 
-    dataSetProperties.colorAccessor = d => d ? d[keys[index]] : 'n/a'
+    const columnKey = keys[index]
+    dataSetProperties.colorAccessor = d => d ? d[columnKey] : null
+
+    const columnType = dataSetProperties.metaColumnTypes[columnKey]
+    switch(columnType) {
+        case COLUMN_TYPES.DATE:
+            dataSetProperties.colorAccessor = d =>  d ? new Date(d[columnKey] * 1000) : null
+            //console.log(dataSetProperties.colorAccessor(allMetaData[0]))
+            //console.log('min', d3.min(Object.values(allMetaData), dataSetProperties.colorAccessor))
+            colorScale = d3.scaleSequential(d3.interpolateCool)
+                    .domain(d3.extent(Object.values(allMetaData), dataSetProperties.colorAccessor))
+            break;
+        case COLUMN_TYPES.NUMBER:
+            dataSetProperties.colorAccessor = d =>  d ? d[columnKey] : null
+            //console.log(dataSetProperties.colorAccessor(allMetaData[0]))
+            //console.log('min', d3.min(Object.values(allMetaData), dataSetProperties.colorAccessor))
+            const domain = d3.extent(Object.values(allMetaData), dataSetProperties.colorAccessor)
+            if(domain[0]===0) {
+                domain[0] = Math.min(0.001, domain[1]/1000)
+            }
+            logScale.domain(domain)
+            colorScale = d3.scaleSequential((d) => d3.interpolateCool(logScale(d)))
+                   // .domain()
+            break;
+        default: 
+            colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
+    }
     changeColors(true)
+}
+
+function getRGBColorByIndex(index) {
+
+    const colorAccessor = dataSetProperties.colorAccessor
+    const metaData = allMetaData
+    const nodeMetaData = getMetaDataByIndex(index)
+
+    const metaDataValue = colorAccessor(nodeMetaData)
+    const pointColor = metaDataValue ? colorScale(metaDataValue) : '#AAAAAA'
+    // if(index< 100) {
+    //     console.log( '-----' + index + '-----')
+    //     console.log(metaDataValue, logScale(metaDataValue), pointColor)
+    //     console.log("%c ", 'background: '+pointColor)
+    // } 
+    if(!pointColor ) {
+        console.log(colorScale.domain()[1])
+        
+    }
+    return UTILS.convertToRGB(pointColor)
+
 }
 
 function changeColors(setNeedUpdate) {
 
     pointGeo.colors.forEach((color, i) => {
-        const colorAccessor = dataSetProperties.colorAccessor
-        const metaData = allMetaData
-        const pointColor = colorScale(colorAccessor(getMetaDataByIndex(i)))
-        const pointRGB = UTILS.hexToRgb(pointColor)
+        //console.log(i, nodeMetaData,colorAccessor(nodeMetaData), colorScale(colorAccessor(nodeMetaData)) )
+        
+        const pointRGB = getRGBColorByIndex(i)
 
         pointGeo.colors[i] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255);
 
@@ -318,8 +372,8 @@ function showMetaBox(index, pointPosition) {
     if(nodeMetaData) {
         imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
         titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
-        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') : ''
-        timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date).toString().substring(0, 25) : ''
+        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') +' ' +  nodeMetaData.comments +' '+ nodeMetaData.views : ''
+        timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date * 1000).toString().substring(0, 25) : ''
         //if pointPosition calculate point position otherwise use mouse location
         const x = !pointPosition ? (mouse.x + 1)/2 * w + 5 :  xScale(dataSetProperties.xAccessor(allCoords[index]))
         const y = !pointPosition ? - (mouse.y - 1)/2 * h + 5 : h - yScale(dataSetProperties.yAccessor(allCoords[index]))
@@ -327,6 +381,13 @@ function showMetaBox(index, pointPosition) {
         metaDivEl.style.left = x
 
         metaDivEl.style.opacity = 1
+
+    }
+    else {
+        imageEl.setAttribute('src', '')
+        titleEl.innerText = ''
+        categoryEl.innerText =  ''
+        timeEl.innerText =  ''
 
     }    
 
@@ -338,9 +399,8 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
     nodesNoLongerHighlighted.forEach((node) => {
 
-        const nodeMeta = getMetaDataByIndex(node.index)
-        const pointColor = colorScale(dataSetProperties.colorAccessor(nodeMeta))
-        const pointRGB = UTILS.hexToRgb(pointColor)
+        
+        const pointRGB = getRGBColorByIndex(node.index)
         pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
 
         const highlightPosition = pointGeo.vertices[node.index]
@@ -436,7 +496,6 @@ selectedNodesEl.addEventListener( 'mouseout', (e) => { overSelectedNodes = false
 
 
 function mousewheel(e) {
-    console.log(e)
 	let d = ((typeof e.wheelDelta != "undefined")?(-e.wheelDelta):e.detail);
     d = 100 * ((d>0)?1:-1);    
     const cPos = camera.position;

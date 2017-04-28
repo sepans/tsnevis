@@ -10,6 +10,20 @@ const UTILS = (function() {
 	    } : null
 	}
 
+	function rgbStringToRgb(rgbString) {
+	    var result = /^rgb\(\s*([\d]+)\s*,\s*([\d]+)\s*,\s*([\d]+)\s*\)/i.exec(rgbString)
+	    return result ? {
+	        r: result[1],
+	        g: result[2],
+	        b: result[3]
+	    } : null
+
+	}
+
+	function convertToRGB(colorString) {
+		return colorString.charAt(0)==='#' ? hexToRgb(colorString) : rgbStringToRgb(colorString)
+	}
+
 	//converts array to map. uses keyFunction and valueFunction to extract key/value from array
 	function createMetaDataMap(metaArray, keyFunction, valueFunction) {
 	    return metaArray.reduce((acc, cur) => {
@@ -27,7 +41,7 @@ const UTILS = (function() {
 
 
 	return {
-		hexToRgb: hexToRgb,
+		convertToRGB: convertToRGB,
 		createMetaDataMap: createMetaDataMap,
 		calculateDistance: calculateDistance
 	} 
