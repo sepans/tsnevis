@@ -1,5 +1,3 @@
-
-
 const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 20
 
 let highlightedNodes = []
@@ -78,6 +76,8 @@ const dataSetProperties = {
     }
 }
 
+const tree = rbush()
+
 const xScale = d3.scaleLinear()
     .range([margin, w - margin])
 
@@ -123,6 +123,8 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 	    const y = yScale(yAccessor(dataPoints[i]));
 	    const z = 0//zScale(unfiltered[i].z);
 
+        tree.insert({minX: x, minY: y, maxX: x, maxY: y, id: id, index: i })
+
 	    pointGeo.vertices.push(new THREE.Vector3(x, y, z));
 	    
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
@@ -133,6 +135,10 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
 
 	}
+    console.log('rbush search')
+    console.log(tree.search({minX: xScale(xAccessor(dataPoints[0])), minY: yScale(yAccessor(dataPoints[0])),
+                         maxX: xScale(xAccessor(dataPoints[0])), maxY: yScale(yAccessor(dataPoints[0]))}))
+
 	scatterPlot.add(points);
 
 	renderer.render(scene, camera);
@@ -267,18 +273,24 @@ function calculateSelection() {
     const nodesNoLongerHighlighted = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
     resetNodeColors(nodesNoLongerHighlighted)
     highlightedNodes = []
-    pointGeo.vertices.forEach((node, i) => {
 
-        if((node.x - topLeft.x > 0 && node.x - bottomRight.x < 0 || node.x - topLeft.x < 0 && node.x - bottomRight.x > 0) &&
-           (node.y - topLeft.y > 0 && node.y - bottomRight.y < 0 || node.y - topLeft.y < 0 && node.y - bottomRight.y > 0) ) {
-            const pointColor = pointGeo.colors[i]
+    const searchBox = {
+                minX: Math.min(topLeft.x, bottomRight.x),
+                minY: Math.min(topLeft.y, bottomRight.y),
+                maxX: Math.max(topLeft.x, bottomRight.x),
+                maxY: Math.max(topLeft.y, bottomRight.y)
+            }
+
+    const searchResults = tree.search(searchBox)
+
+    searchResults.forEach(result => {
+            const pointColor = pointGeo.colors[result.index]
             pointColor.setRGB(pointColor.r * 0.6 , pointColor.g * 0.6 , pointColor.b * 0.6 )
             points.geometry.colorsNeedUpdate = true
-            highlightedNodes.push({index: i, mode: HIGHLIGHT_MODES.SELECTION})
-        }
+            highlightedNodes.push({index: result.index, mode: HIGHLIGHT_MODES.SELECTION})
+
     })
 
- 
     drawSelectedNodes()
 
  }
@@ -324,20 +336,24 @@ function hoverHighlightFast() {
     const mouse3D = intersectWithBackPlane(mouse)
 
     const newHighlightedNodes = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
-    for(let i = 0; i < pointGeo.vertices.length; i++) {
-    //pointGeo.vertices.forEach((node, i) => {
-        const node = pointGeo.vertices[i]
-        const distance = UTILS.calculateDistance(mouse3D.x, mouse3D.y, node.x, node.y)
-        //console.log(mouse3D, node, distance)
-        if(distance < HOVER_TOl) {
-            //console.log(i, distance, mouse3D, node)
-            newHighlightedNodes.push({index: i, distance: distance, mode: HIGHLIGHT_MODES.HOVER})
 
-
+    const searchBox = {
+            minX: mouse3D.x - HOVER_TOl,
+            minY: mouse3D.y - HOVER_TOl,
+            maxX: mouse3D.x + HOVER_TOl,
+            maxY: mouse3D.y + HOVER_TOl
         }
-        
-    //})
-    }
+
+    const searchResults = tree.search(searchBox)
+
+    searchResults.forEach(result => {
+
+        const node = pointGeo.vertices[result.index]
+        const distance = UTILS.calculateDistance(mouse3D.x, mouse3D.y, result.minX, result.minY)
+        newHighlightedNodes.push({index: result.index, distance: distance, mode: HIGHLIGHT_MODES.HOVER})
+
+    })
+
     newHighlightedNodes.sort((a, b) => a.distance - b.distance)
     const newHighlightedNode = newHighlightedNodes[0]
 
@@ -372,7 +388,7 @@ function highlightHoveredNodes() {
     points.geometry.colorsNeedUpdate = true
 
     const highlightPosition = pointGeo.vertices[index]
-    highlightPosition.z = 0.5
+    highlightPosition.z = 1
     pointGeo.vertices[index] = highlightPosition
     pointGeo.verticesNeedUpdate = true
 
@@ -492,7 +508,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
    if(e.keyCode === 16) {
         shiftDown = false
-        document.body.style.cursor = 'default'
+        document.body.style.cursor = 'move'
    }
 })
 
