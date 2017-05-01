@@ -45,6 +45,20 @@ const mat = new THREE.PointsMaterial({
 const pointGeo = new THREE.Geometry();
 const points = new THREE.Points(pointGeo, mat);
 
+const showStat = true
+      stats = null
+
+if(showStat) { 
+    var script=document.createElement('script');
+    script.src='//rawgit.com/mrdoob/stats.js/master/build/stats.min.js';
+    document.head.appendChild(script);
+    script.onload=function() {
+        stats = new Stats();
+        stats.showPanel(0)
+        document.body.appendChild( stats.dom );
+    }
+}
+
 let allCoords;
 let allMetaData;
 
@@ -511,6 +525,10 @@ function mousewheel(e) {
 
 
 function animate() {
+    
+    if(stats) {
+        stats.begin();
+    }
     //last = t;
     renderer.clear();
     //console.log(mouse)
@@ -526,8 +544,12 @@ function animate() {
     //camera.lookAt(scene.position);
     renderer.render(scene, camera);
 
+    if(stats) {
+        stats.end();
+    }
+
     window.requestAnimationFrame(animate, renderer.domElement);
-};
+}
 
 animate()//new Date().getTime());
 
