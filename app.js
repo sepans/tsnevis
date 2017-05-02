@@ -1,7 +1,6 @@
 const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 20
 
-let highlightedNodes = []
-const HIGHLIGHT_MODES = {HOVER: 'hover', SELECTION: 'selection'}
+let highlightedNodes = {hover: [], selection: []}
 
 const ZOOM_MIN_Z = 100
       ZOOM_MAX_Z = 1000
@@ -9,6 +8,8 @@ const ZOOM_MIN_Z = 100
 const logScale = d3.scaleLog()
 
 const HOVER_TOl = 10
+
+const DARKEN_FACTOR = 0.6
 
 const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
 camera.position.x = w/2
@@ -267,9 +268,10 @@ function calculateSelection() {
     const topLeft = intersectWithBackPlane(mouseStart)
     const bottomRight = intersectWithBackPlane(mouse)
 
-    const nodesNoLongerHighlighted = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
+    const nodesNoLongerHighlighted = highlightedNodes.selection
+    highlightedNodes.selection = []
+    console.log(nodesNoLongerHighlighted)
     resetNodeColors(nodesNoLongerHighlighted)
-    highlightedNodes = []
 
     const searchBox = {
                 minX: Math.min(topLeft.x, bottomRight.x),
@@ -280,12 +282,13 @@ function calculateSelection() {
 
     const searchResults = tree.search(searchBox)
 
+
     searchResults.forEach(result => {
             const pointColor = pointGeo.colors[result.index]
-            pointColor.setRGB(pointColor.r * 0.6 , pointColor.g * 0.6 , pointColor.b * 0.6 )
+            pointColor.setRGB(pointColor.r * DARKEN_FACTOR , pointColor.g * DARKEN_FACTOR , pointColor.b * DARKEN_FACTOR )
             const pointPosition = pointGeo.vertices[result.index]
-            pointPosition.z = 3
-            highlightedNodes.push({index: result.index, mode: HIGHLIGHT_MODES.SELECTION})
+            pointPosition.z = 1
+            highlightedNodes.selection.push({index: result.index})
 
     })
     pointGeo.verticesNeedUpdate = true
@@ -306,14 +309,12 @@ function intersectWithBackPlane(vector2) {
 
 function drawSelectedNodes() {
     let selectedNodesHTML = ''
-    highlightedNodes.forEach((node) => {
-        if(node.mode===HIGHLIGHT_MODES.SELECTION) {
-            if(allMetaData) {
-                const nodeMetaData = getMetaDataByIndex(node.index)
-                selectedNodesHTML = `${selectedNodesHTML} <img __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
-            }
-
+    highlightedNodes.selection.forEach((node) => {
+        if(allMetaData) {
+            const nodeMetaData = getMetaDataByIndex(node.index)
+            selectedNodesHTML = `${selectedNodesHTML} <img __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
         }
+
     })
     selectedNodesEl.innerHTML = selectedNodesHTML;
 
@@ -335,7 +336,7 @@ function hoverHighlightFast() {
     }
     const mouse3D = intersectWithBackPlane(mouse)
 
-    const newHighlightedNodes = highlightedNodes.filter(node => node.mode === HIGHLIGHT_MODES.SELECTION)
+    const newHighlightedNodes = []
 
     const searchBox = {
             minX: mouse3D.x - HOVER_TOl,
@@ -350,20 +351,19 @@ function hoverHighlightFast() {
 
         const node = pointGeo.vertices[result.index]
         const distance = UTILS.calculateDistance(mouse3D.x, mouse3D.y, result.minX, result.minY)
-        newHighlightedNodes.push({index: result.index, distance: distance, mode: HIGHLIGHT_MODES.HOVER})
+        newHighlightedNodes.push({index: result.index, distance: distance})
 
     })
 
     newHighlightedNodes.sort((a, b) => a.distance - b.distance)
     const newHighlightedNode = newHighlightedNodes[0]
 
-    const nodesNoLongerHighlighted = highlightedNodes.filter((node) => {
-
-        return node.mode === HIGHLIGHT_MODES.HOVER && (newHighlightedNode==undefined || newHighlightedNode.index!==node.index)
+    const nodesNoLongerHighlighted = highlightedNodes.hover.filter((node) => {
+        return (newHighlightedNode==undefined || newHighlightedNode.index!==node.index) 
     })
     resetNodeColors(nodesNoLongerHighlighted)
 
-    highlightedNodes = newHighlightedNodes
+    highlightedNodes.hover = newHighlightedNodes
 
     highlightHoveredNodes()
     //console.log(highlightedNodes)
@@ -372,7 +372,7 @@ function hoverHighlightFast() {
 
 function highlightHoveredNodes() {
 
-    const sortedHighlights = highlightedNodes.filter((node) => node.mode === HIGHLIGHT_MODES.HOVER)
+    const sortedHighlights = highlightedNodes.hover
 
     if(sortedHighlights.length===0) {
         points.geometry.colorsNeedUpdate = true
@@ -446,15 +446,18 @@ function resetNodeColors(nodesNoLongerHighlighted) {
 
         
         const pointRGB = getRGBColorByIndex(node.index)
-        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255)
+        const makeDarker = highlightedNodes.selection.filter(d => d.index===node.index).length ? DARKEN_FACTOR : 1
+        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255 * makeDarker,
+                                                               pointRGB.g/255 * makeDarker,
+                                                               pointRGB.b/255 * makeDarker)
 
         const highlightPosition = pointGeo.vertices[node.index]
         highlightPosition.z = 0
         pointGeo.vertices[node.index] = highlightPosition
-        pointGeo.verticesNeedUpdate = true
 
 
     })
+    pointGeo.verticesNeedUpdate = true
 
 }
 
