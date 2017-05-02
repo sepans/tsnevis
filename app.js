@@ -405,8 +405,23 @@ function showMetaBox(index, pointPosition) {
         categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') +' ' +  nodeMetaData.comments +' '+ nodeMetaData.views : ''
         timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date * 1000).toString().substring(0, 25) : ''
         //if pointPosition calculate point position otherwise use mouse location
-        const x = !pointPosition ? (mouse.x + 1)/2 * w + 5 :  xScale(dataSetProperties.xAccessor(allCoords[index]))
-        const y = !pointPosition ? - (mouse.y - 1)/2 * h + 5 : h - yScale(dataSetProperties.yAccessor(allCoords[index]))
+        let x, y
+        if(pointPosition) {
+            const xScreen =   xScale(dataSetProperties.xAccessor(allCoords[index]))
+            const yScreen =   yScale(dataSetProperties.yAccessor(allCoords[index]))
+
+            const dPos = new THREE.Vector3(xScreen, yScreen, 0)
+            const project = dPos.project(camera)
+
+            x = ( project.x * w/2 ) + w/2;
+            y = - ( project.y * h/2 ) + h/2;
+
+        }
+        else {
+            x =  (mouse.x + 1)/2 * w + 5 
+            y = - (mouse.y - 1)/2 * h + 5 
+
+        }
         metaDivEl.style.top = y
         metaDivEl.style.left = x
 
