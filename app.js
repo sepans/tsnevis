@@ -43,7 +43,7 @@ const mat = new THREE.PointsMaterial({
 const pointGeo = new THREE.Geometry();
 const points = new THREE.Points(pointGeo, mat);
 
-const showStat = true
+const showStat = false
       stats = null
 
 if(showStat) { 
@@ -93,6 +93,7 @@ let sx = 0,
     ssy = 0,
     mouseDown = false,
     shiftDown = false,
+    altDown = false,
     overSelectedNodes = false
 
 
@@ -121,7 +122,7 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
         const id = idAccessor(dataPoints[i])
 	    const x = xScale(xAccessor(dataPoints[i]));
 	    const y = yScale(yAccessor(dataPoints[i]));
-	    const z = 0//zScale(unfiltered[i].z);
+	    const z = 0//Math.random() * 500
 
         tree.insert({minX: x, minY: y, maxX: x, maxY: y, id: id, index: i })
 
@@ -222,11 +223,7 @@ function getRGBColorByIndex(index) {
 
     const metaDataValue = colorAccessor(nodeMetaData)
     const pointColor = metaDataValue ? colorScale(metaDataValue) : '#AAAAAA'
-    // if(index< 100) {
-    //     console.log( '-----' + index + '-----')
-    //     console.log(metaDataValue, logScale(metaDataValue), pointColor)
-    //     console.log("%c ", 'background: '+pointColor)
-    // } 
+
     if(!pointColor ) {
         console.log(colorScale.domain()[1])
         
@@ -286,10 +283,13 @@ function calculateSelection() {
     searchResults.forEach(result => {
             const pointColor = pointGeo.colors[result.index]
             pointColor.setRGB(pointColor.r * 0.6 , pointColor.g * 0.6 , pointColor.b * 0.6 )
-            points.geometry.colorsNeedUpdate = true
+            const pointPosition = pointGeo.vertices[result.index]
+            pointPosition.z = 3
             highlightedNodes.push({index: result.index, mode: HIGHLIGHT_MODES.SELECTION})
 
     })
+    pointGeo.verticesNeedUpdate = true
+    points.geometry.colorsNeedUpdate = true
 
     drawSelectedNodes()
 
@@ -470,21 +470,27 @@ window.addEventListener('mousemove', (e) => {
     if (mouseDown) {
         var dx = e.clientX - sx;
         var dy = e.clientY - sy;
-        //scatterPlot.rotation.y += dx * 0.01;
-        sx += dx;
-        sy += dy;
         if(shiftDown) {
             selectionEl.style.opacity = 1
             selectionEl.style.top = Math.min(ssy, sy)
             selectionEl.style.left = Math.min(ssx, sx)
             selectionEl.style.width = Math.abs(ssx - sx)+'px'
             selectionEl.style.height = Math.abs(ssy - sy)+'px'
+        }
+        else if (altDown) {
+            scatterPlot.rotation.y += dx * 0.01;
+            //scatterPlot.rotation.x += dy * 0.01;
+            camera.position.y += dy * 1.5;
+            //console.log( dy, camera.position.y)
         }   
         else {
             camera.position.x -= dx;
             camera.position.y += dy;
 
         }     
+        sx += dx;
+        sy += dy;
+
     }
 
     // calculate mouse position in normalized device coordinates
@@ -503,6 +509,9 @@ window.addEventListener('keydown', (e) => {
          document.body.style.cursor = 'crosshair'
         shiftDown = true
    }
+   else if(e.altKey) {
+    altDown = true
+   }
 })
 
 window.addEventListener('keyup', (e) => {
@@ -510,6 +519,10 @@ window.addEventListener('keyup', (e) => {
         shiftDown = false
         document.body.style.cursor = 'move'
    }
+   else if(e.altKey) {
+        altDown = false
+   }
+
 })
 
 
