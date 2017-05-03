@@ -24,6 +24,8 @@ const renderer = new THREE.WebGLRenderer({
     antialias: true
 })
 
+let line
+
 renderer.setSize(w, h);
 document.body.appendChild(renderer.domElement);
 renderer.setClearColor(0xFFFFFF, 1.0);
@@ -185,18 +187,19 @@ const q = d3.queue()
 
         console.log(indexByIdMap)
         const start = 68
-        d3.range(start, 100).forEach(i => {
+        d3.range(start, 69).forEach(indx => {
 
             setTimeout(() => {
-                resetNodeColors(highlightedNodes.selection.filter(d => d.index >=0 ))
+                resetNodeColors(highlightedNodes.selection)
                 //highlightedNodes.selection = []
 
-                selectedNodesEl.innerText = 'user '+ i
-                console.log(i)
-                highlightedNodes.selection = results[2][i].map(d => { return {index: indexByIdMap[d]}})//.filter(d => d.index >=0 )
+                selectedNodesEl.innerText = 'user '+ indx
+                console.log(indx)
+                highlightedNodes.selection = results[2][indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
 
                 //console.log(highlightedNodes.selection)
 
+                
                 highlightedNodes.selection.forEach((result, i) => {
                     //console.log(result.index, i, pointGeo.colors.length, pointGeo.colors[result.index])
                     if(result.index >=0) {
@@ -207,9 +210,73 @@ const q = d3.queue()
                     }
                     
                 })
+                
+                //var MAX_POINTS = 500;
+
+                var points = highlightedNodes.selection.map(d => {
+                    const ind = d.index
+                    const x = xScale(dataSetProperties.xAccessor(allCoords[ind]));
+                    const y = yScale(dataSetProperties.yAccessor(allCoords[ind]));
+                    const z = 0//Math.random() * 500
+
+                    return new THREE.Vector3(x, y, z)
+                    
+                })
+
+                // geometry
+                var geometry = new THREE.BufferGeometry();
+
+                // attributes
+                numPoints = points.length;
+                var positions = new Float32Array( numPoints * 3 ); // 3 vertices per point
+                var colors = new Float32Array( numPoints * 3 ); // 3 channels per point
+                var lineDistances = new Float32Array( numPoints * 1 ); // 1 value per point
+
+                geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+                geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
+                geometry.addAttribute( 'lineDistance', new THREE.BufferAttribute( lineDistances, 1 ) );
+
+                // populate
+                var color = new THREE.Color();
+
+                for ( var i = 0, index = 0, l = numPoints; i < l; i ++, index += 3 ) {
+
+                    positions[ index ] = points[ i ].x;
+                    positions[ index + 1 ] = points[ i ].y;
+                    positions[ index + 2 ] = points[ i ].z;
+
+                    color.setHSL( i / l, 1.0, 0.5 );
+
+                    colors[ index ] = color.r;
+                    colors[ index + 1 ] = color.g;
+                    colors[ index + 2 ] = color.b;
+
+                    if ( i > 0 ) {
+
+                        lineDistances[ i ] = lineDistances[ i - 1 ] + points[ i - 1 ].distanceTo( points[ i ] );
+
+                    }
+
+                }
+
+                lineLength = lineDistances[ numPoints - 1 ];
 
 
-            }, (i - start) * 700)
+                // material
+                var material = new THREE.LineDashedMaterial( {
+
+                    vertexColors: THREE.VertexColors,
+                    dashSize: 1, // to be updated in the render loop
+                    gapSize: 1e10 // a big number, so only one dash is rendered
+
+                } );
+
+                // line
+                line = new THREE.Line( geometry, material );
+                scene.add( line );                
+
+
+            }, (indx - start) * 700)
 
 
         })
@@ -615,7 +682,7 @@ function mousewheel(e) {
     cPos.z = newZ;
 }
 
-
+let fraction = 0
 function animate() {
     
     if(stats) {
@@ -636,11 +703,20 @@ function animate() {
     //camera.lookAt(scene.position);
     renderer.render(scene, camera);
 
+
+    if(line) {
+    fraction = ( fraction + 0.0005 ); // fraction in [ 0, 1 ]
+    line.material.dashSize = fraction * lineLength;
+
+    }
+
     if(stats) {
         stats.end();
     }
 
+
     window.requestAnimationFrame(animate, renderer.domElement);
+
 }
 
 animate()//new Date().getTime());
