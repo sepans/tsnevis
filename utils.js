@@ -32,6 +32,14 @@ const UTILS = (function() {
 	    }, {})
 	}
 
+	function createIndexByIdMap(coorArray, idFunction) {
+	    return coorArray.reduce((acc, cur, i) => {
+	        acc[idFunction(cur)] = i
+	        return acc
+	    }, {})
+
+	}
+
 	function calculateDistance(x1, y1, x2, y2) {
 		const a = x1 - x2
 		const b = y1 - y2
@@ -43,6 +51,7 @@ const UTILS = (function() {
 	return {
 		convertToRGB: convertToRGB,
 		createMetaDataMap: createMetaDataMap,
+		createIndexByIdMap: createIndexByIdMap,
 		calculateDistance: calculateDistance
 	} 
 

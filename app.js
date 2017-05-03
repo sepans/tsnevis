@@ -68,7 +68,7 @@ const dataSetProperties = {
     metaDataAccessor: d => d.meta,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
-    colorAccessor: m => m ? m.groups[0] : null,
+    colorAccessor: m => m ? 'a' : null,
     imageAccessor: m => m ? m.sizes[1].source : null,
     metaColumnTypes: {
         'date': COLUMN_TYPES.DATE,
@@ -134,7 +134,8 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
         const pointRGB = getRGBColorByIndex(i)
 
-	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
+	    //pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
+        pointGeo.colors.push(new THREE.Color().setRGB(0.9, 0.9, 0.9))
 
 	}
     console.log('rbush search')
@@ -153,6 +154,7 @@ const q = d3.queue()
     //.defer(d3.json, 'data/word2vec_tsne_2d.json')
     .defer(d3.json, 'data/conv2vec_tsne_026.json')
     .defer(d3.json, 'data/word2vec_meta_short.json')
+    .defer(d3.json, 'data/user_sequences.json')
     .awaitAll((error, results) => {
         if (error) {
             console.log('ERROR', error)
@@ -162,16 +164,57 @@ const q = d3.queue()
               meta = results[1]
         console.log(meta[0], meta.length)
         console.log(tsne[0], tsne.length)
+        console.log(results[2][0])
+
+
+
+
         allMetaData = UTILS.createMetaDataMap(results[1], 
                         dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
-        allCoords = tsne
+        allCoords = tsne//.sort((a, b) => parseInt(a.id) - parseInt(b.id))
         UTILS.createMetaDataMap(meta, 
                         dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         createMetaDataOptions()
-        addPoints(tsne, allMetaData, 
+        
+        addPoints(allCoords, allMetaData, 
             dataSetProperties.idAccessor,
             dataSetProperties.xAccessor, dataSetProperties.yAccessor,
             dataSetProperties.colorAccessor)
+
+        const indexByIdMap = UTILS.createIndexByIdMap(tsne, dataSetProperties.idAccessor)
+
+        console.log(indexByIdMap)
+        const start = 68
+        d3.range(start, 100).forEach(i => {
+
+            setTimeout(() => {
+                resetNodeColors(highlightedNodes.selection.filter(d => d.index >=0 ))
+                //highlightedNodes.selection = []
+
+                selectedNodesEl.innerText = 'user '+ i
+                console.log(i)
+                highlightedNodes.selection = results[2][i].map(d => { return {index: indexByIdMap[d]}})//.filter(d => d.index >=0 )
+
+                //console.log(highlightedNodes.selection)
+
+                highlightedNodes.selection.forEach((result, i) => {
+                    //console.log(result.index, i, pointGeo.colors.length, pointGeo.colors[result.index])
+                    if(result.index >=0) {
+                        const pointColor = pointGeo.colors[result.index]
+                        pointColor.setRGB(1, 0 ,0 )
+                        const pointPosition = pointGeo.vertices[result.index]
+                        pointPosition.z = 1//200
+                    }
+                    
+                })
+
+
+            }, (i - start) * 700)
+
+
+        })
+
+
     })
 
 
@@ -447,9 +490,11 @@ function resetNodeColors(nodesNoLongerHighlighted) {
         
         const pointRGB = getRGBColorByIndex(node.index)
         const makeDarker = highlightedNodes.selection.filter(d => d.index===node.index).length ? DARKEN_FACTOR : 1
-        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255 * makeDarker,
-                                                               pointRGB.g/255 * makeDarker,
-                                                               pointRGB.b/255 * makeDarker)
+        // pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255 * makeDarker,
+        //                                                        pointRGB.g/255 * makeDarker,
+        //                                                        pointRGB.b/255 * makeDarker)
+
+        pointGeo.colors[node.index] = new THREE.Color().setRGB(0.9, 0.9, 0.9)
 
         const highlightPosition = pointGeo.vertices[node.index]
         highlightPosition.z = 0
