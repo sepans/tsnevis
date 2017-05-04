@@ -1,71 +1,51 @@
-const w = window.innerWidth, h = window.innerHeight, near = -500, far = 1000, margin = 20
+const w = window.innerWidth, h = window.innerHeight 
 
-let highlightedNodes = {hover: [], selection: []}
 
 const ZOOM_MIN_Z = 100
       ZOOM_MAX_Z = 1000
+      MARGIN = 20
+      HOVER_TOl = 10
+      DARKEN_FACTOR = 0.6
+      PARTICLE_SIZE = 4
 
-const logScale = d3.scaleLog()
+const COLUMN_TYPES = {DATE: 'DATE', NUMBER: 'NUMBER'}
 
-const HOVER_TOl = 10
+const threejsObjects = {
+    camera: new THREE.PerspectiveCamera(45, w / h, 1, 10000),
+    raycaster: new THREE.Raycaster(),
+    renderer: new THREE.WebGLRenderer({antialias: true}),
+    groupLine: null,
+    scene: new THREE.Scene(),
+    scatterPlot: new THREE.Object3D(),
+    mat: new THREE.PointsMaterial({vertexColors: true, size: PARTICLE_SIZE}),
+    pointGeo: new THREE.Geometry(),
+    points: null,
+    backgroundPlane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+    stats: null
 
-const DARKEN_FACTOR = 0.6
-
-const camera = new THREE.PerspectiveCamera(45, w / h, 1, 10000)
-camera.position.x = w/2
-camera.position.y = h/2
-camera.position.z = 900
-
-const raycaster = new THREE.Raycaster()
-const mouse = new THREE.Vector2()
-const mouseStart = new THREE.Vector2()
-
-const renderer = new THREE.WebGLRenderer({
-    antialias: true
-})
-
-let line
-
-renderer.setSize(w, h);
-document.body.appendChild(renderer.domElement);
-renderer.setClearColor(0xFFFFFF, 1.0);
-
-const scene = new THREE.Scene();
-
-const scatterPlot = new THREE.Object3D();
-scene.add(scatterPlot);
-
-const PARTICLE_SIZE = 4
-
-const mat = new THREE.PointsMaterial({
-    vertexColors: true,
-    size: PARTICLE_SIZE
-});
-
-
-const pointGeo = new THREE.Geometry();
-const points = new THREE.Points(pointGeo, mat);
-
-const showStat = false
-      stats = null
-
-if(showStat) { 
-    var script=document.createElement('script');
-    script.src='//rawgit.com/mrdoob/stats.js/master/build/stats.min.js';
-    document.head.appendChild(script);
-    script.onload=function() {
-        stats = new Stats();
-        stats.showPanel(0)
-        document.body.appendChild( stats.dom );
-    }
 }
+
+const mouse = new THREE.Vector2()
+      mouseStart = new THREE.Vector2()
+
+let highlightedNodes = {hover: [], selection: []}
+const showStat = false
 
 let allCoords,
     allMetaData,
-    groups,
+    groupsData,
     indexByIdMap
 
-const COLUMN_TYPES = {DATE: 'DATE', NUMBER: 'NUMBER'}
+let sx = 0,
+    sy = 0,
+    ssx = 0,
+    ssy = 0,
+    mouseDown = false,
+    shiftDown = false,
+    altDown = false,
+    overSelectedNodes = false
+
+
 
 const dataSetProperties = {
     idAccessor: d => d.id,
@@ -81,26 +61,18 @@ const dataSetProperties = {
     }
 }
 
+
 const tree = rbush()
 
 const xScale = d3.scaleLinear()
-    .range([margin, w - margin])
+    .range([MARGIN, w - MARGIN])
 
 const yScale = d3.scaleLinear()
-    .range([margin, h - margin])
+    .range([MARGIN, h - MARGIN])
 
 let colorScale = d3.scaleOrdinal(d3.schemeCategory20c)
 
-
-let sx = 0,
-    sy = 0,
-    ssx = 0,
-    ssy = 0,
-    mouseDown = false,
-    shiftDown = false,
-    altDown = false,
-    overSelectedNodes = false
-
+const logScale = d3.scaleLog()
 
 
 const metaDivEl = document.getElementById('meta'),
@@ -115,8 +87,81 @@ const metaDivEl = document.getElementById('meta'),
       groupnumEl = document.getElementById('groupnum')
 
 
+setupThreeJS()
+
+
+//load data
+const q = d3.queue()
+    //.defer(d3.json, 'data/word2vec_tsne_2d.json')
+    .defer(d3.json, 'data/conv2vec_tsne_026.json')
+    .defer(d3.json, 'data/word2vec_meta_short.json')
+    .defer(d3.json, 'data/user_sequences.json')
+    .awaitAll((error, results) => {
+        if (error) {
+            console.log('ERROR', error)
+            throw error;
+        }
+        const tsne = results[0],
+              meta = results[1]
+        console.log(meta[0], meta.length)
+        console.log(tsne[0], tsne.length)
+
+        allMetaData = UTILS.createMetaDataMap(results[1], 
+                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
+        allCoords = tsne//.sort((a, b) => parseInt(a.id) - parseInt(b.id))
+        groupsData = results[2]
+        //needed?
+        UTILS.createMetaDataMap(meta, 
+                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
+        createMetaDataOptions()
+        
+        addPoints(allCoords, allMetaData, 
+            dataSetProperties.idAccessor,
+            dataSetProperties.xAccessor, dataSetProperties.yAccessor,
+            dataSetProperties.colorAccessor)
+
+        indexByIdMap = UTILS.createIndexByIdMap(tsne, dataSetProperties.idAccessor)
+
+
+    })
+
+
+function setupThreeJS() {
+
+
+    threejsObjects.camera.position.x = w/2
+    threejsObjects.camera.position.y = h/2
+    threejsObjects.camera.position.z = 900
+
+    threejsObjects.renderer.setSize(w, h);
+    document.body.appendChild(threejsObjects.renderer.domElement);
+    threejsObjects.renderer.setClearColor(0xFFFFFF, 1.0);
+
+    threejsObjects.scene.add(threejsObjects.scatterPlot);
+    threejsObjects.points = new THREE.Points(threejsObjects.pointGeo, threejsObjects.mat)
+
+    if(showStat) { 
+        var script=document.createElement('script');
+        script.src='//rawgit.com/mrdoob/stats.js/master/build/stats.min.js';
+        document.head.appendChild(script);
+        script.onload=function() {
+            threejsObjects.stats = new Stats();
+            threejsObjects.stats.showPanel(0)
+            document.body.appendChild( threejsObjects.stats.dom );
+        }
+    }
+
+}
+
 //TODO metaData no longer needed?!
 function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, colorAccessor) {
+
+    const renderer = threejsObjects.renderer,
+          pointGeo = threejsObjects.pointGeo,
+          points = threejsObjects.points,
+          scatterPlot = threejsObjects.scatterPlot,
+          scene = threejsObjects.scene,
+          camera = threejsObjects.camera
 
 	xScale.domain(d3.extent(dataPoints, xAccessor))
 
@@ -132,7 +177,7 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 
         tree.insert({minX: x, minY: y, maxX: x, maxY: y, id: id, index: i })
 
-	    pointGeo.vertices.push(new THREE.Vector3(x, y, z));
+	   pointGeo.vertices.push(new THREE.Vector3(x, y, z));
 	    
 	    //pointGeo.vertices[i].angle = Math.atan2(z, x);
 	    //pointGeo.vertices[i].radius = Math.sqrt(x * x + z * z);
@@ -153,59 +198,22 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 
 }
 
-//load data
 
-const q = d3.queue()
-    //.defer(d3.json, 'data/word2vec_tsne_2d.json')
-    .defer(d3.json, 'data/conv2vec_tsne_026.json')
-    .defer(d3.json, 'data/word2vec_meta_short.json')
-    .defer(d3.json, 'data/user_sequences.json')
-    .awaitAll((error, results) => {
-        if (error) {
-            console.log('ERROR', error)
-            throw error;
-        }
-        const tsne = results[0],
-              meta = results[1]
-        console.log(meta[0], meta.length)
-        console.log(tsne[0], tsne.length)
-
-        allMetaData = UTILS.createMetaDataMap(results[1], 
-                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
-        allCoords = tsne//.sort((a, b) => parseInt(a.id) - parseInt(b.id))
-        groups = results[2]
-        //needed?
-        UTILS.createMetaDataMap(meta, 
-                        dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
-        createMetaDataOptions()
-        
-        addPoints(allCoords, allMetaData, 
-            dataSetProperties.idAccessor,
-            dataSetProperties.xAccessor, dataSetProperties.yAccessor,
-            dataSetProperties.colorAccessor)
-
-        indexByIdMap = UTILS.createIndexByIdMap(tsne, dataSetProperties.idAccessor)
-
-        console.log(indexByIdMap)
-        const start = 69
-
-                              
-        //addGroupLine(start)
-
-
-
-    })
 
 
 function addGroupLine(indx) {
-    resetNodeColors(highlightedNodes.selection)
-                //highlightedNodes.selection = []
 
-    scene.remove(line)
+    const pointGeo = threejsObjects.pointGeo
+          scene = threejsObjects.scene
+          //groupLine = threejsObjects.groupLine
+
+    resetNodeColors(highlightedNodes.selection)
+
+    scene.remove(threejsObjects.groupLine)
 
     selectedNodesEl.innerText = 'user '+ indx
-    console.log(indx)
-    highlightedNodes.selection = groups[indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
+
+    highlightedNodes.selection = groupsData[indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
 
     //console.log(highlightedNodes.selection)
 
@@ -221,11 +229,8 @@ function addGroupLine(indx) {
         
     })
     
-    //changeColors(true)
-    
-    //var MAX_POINTS = 500;
 
-    var points = highlightedNodes.selection.map(d => {
+    var linePoints = highlightedNodes.selection.map(d => {
         const ind = d.index
         const x = xScale(dataSetProperties.xAccessor(allCoords[ind]));
         const y = yScale(dataSetProperties.yAccessor(allCoords[ind]));
@@ -236,26 +241,26 @@ function addGroupLine(indx) {
     })
 
     // geometry
-    var geometry = new THREE.BufferGeometry();
+    const geometry = new THREE.BufferGeometry();
 
     // attributes
-    numPoints = points.length;
-    var positions = new Float32Array( numPoints * 3 ); // 3 vertices per point
-    var colors = new Float32Array( numPoints * 3 ); // 3 channels per point
-    var lineDistances = new Float32Array( numPoints * 1 ); // 1 value per point
+    numPoints = linePoints.length;
+    const positions = new Float32Array( numPoints * 3 ); // 3 vertices per point
+    const colors = new Float32Array( numPoints * 3 ); // 3 channels per point
+    const lineDistances = new Float32Array( numPoints * 1 ); // 1 value per point
 
     geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
     geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
     geometry.addAttribute( 'lineDistance', new THREE.BufferAttribute( lineDistances, 1 ) );
 
     // populate
-    var color = new THREE.Color();
+    const color = new THREE.Color();
 
-    for ( var i = 0, index = 0, l = numPoints; i < l; i ++, index += 3 ) {
+    for ( let i = 0, index = 0, l = numPoints; i < l; i ++, index += 3 ) {
 
-        positions[ index ] = points[ i ].x;
-        positions[ index + 1 ] = points[ i ].y;
-        positions[ index + 2 ] = points[ i ].z;
+        positions[ index ] = linePoints[ i ].x;
+        positions[ index + 1 ] = linePoints[ i ].y;
+        positions[ index + 2 ] = linePoints[ i ].z;
 
         color.setHSL( i / l, 1.0, 0.5 );
 
@@ -265,7 +270,7 @@ function addGroupLine(indx) {
 
         if ( i > 0 ) {
 
-            lineDistances[ i ] = lineDistances[ i - 1 ] + points[ i - 1 ].distanceTo( points[ i ] );
+            lineDistances[ i ] = lineDistances[ i - 1 ] + linePoints[ i - 1 ].distanceTo( linePoints[ i ] );
 
         }
 
@@ -275,7 +280,7 @@ function addGroupLine(indx) {
 
 
     // material
-    var material = new THREE.LineDashedMaterial( {
+    const material = new THREE.LineDashedMaterial( {
 
         vertexColors: THREE.VertexColors,
         dashSize: 1, // to be updated in the render loop
@@ -284,16 +289,16 @@ function addGroupLine(indx) {
     } );
 
     // line
-    line = new THREE.Line( geometry, material );
+    threejsObjects.groupLine = new THREE.Line( geometry, material );
     fraction = 0
-    scene.add( line ); 
+    scene.add( threejsObjects.groupLine ); 
 }
 
 
 function createMetaDataOptions() {
     const keys = Object.keys(getMetaDataByIndex(0))
     const options = keys.map(key => `<option>${key}</option>`)
-    if(groups.length) {
+    if(groupsData.length) {
         options.push('<option>highlight groups</option>')
     }
     controlsEl.innerHTML = options
@@ -363,6 +368,9 @@ function getRGBColorByIndex(index) {
 
 function changeColors(setNeedUpdate) {
 
+    const pointGeo = threejsObjects.pointGeo
+          points = threejsObjects.points
+
     pointGeo.colors.forEach((color, i) => {
         //console.log(i, nodeMetaData,colorAccessor(nodeMetaData), colorScale(colorAccessor(nodeMetaData)) )
         
@@ -390,8 +398,11 @@ function getIdByIndex(index) {
 // 	console.log(data)
 // 	addPoints(data, null, d => d.coords[0], d => d.coords[1], m => 'x')
 // })
+
 function calculateSelection() {
 
+    const pointGeo = threejsObjects.pointGeo
+          points = threejsObjects.points
 
     const topLeft = intersectWithBackPlane(mouseStart)
     const bottomRight = intersectWithBackPlane(mouse)
@@ -426,10 +437,13 @@ function calculateSelection() {
 
  }
 
- const backgroundPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
-
+ 
 // finds the intersection between ray and background flat plane
 function intersectWithBackPlane(vector2) {
+
+    const camera = threejsObjects.camera,
+          raycaster = threejsObjects.raycaster
+          backgroundPlane = threejsObjects.backgroundPlane
     
     raycaster.setFromCamera( vector2, camera );
     return raycaster.ray.intersectPlane(backgroundPlane)
@@ -459,6 +473,9 @@ function nodePreviewImageClicked(e) {
 }
 
 function hoverHighlightFast() {
+
+    const pointGeo = threejsObjects.pointGeo
+
     if(overSelectedNodes) {
         return
     }
@@ -500,6 +517,9 @@ function hoverHighlightFast() {
 
 function highlightHoveredNodes() {
 
+    const pointGeo = threejsObjects.pointGeo,
+          points = threejsObjects.points
+
     const sortedHighlights = highlightedNodes.hover
 
     if(sortedHighlights.length===0) {
@@ -526,11 +546,14 @@ function highlightHoveredNodes() {
 
 function showMetaBox(index, pointPosition) {
 
+    const points = threejsObjects.points
+          camera = threejsObjects.camera
+
     const nodeMetaData = getMetaDataByIndex(index)
     if(nodeMetaData) {
         imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
         titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
-        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') +' ' +  nodeMetaData.comments +' '+ nodeMetaData.views : ''
+        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') +' c ' +  nodeMetaData.comments +' v '+ nodeMetaData.views : '' //JSON.stringify(nodeMetaData, '\t') : ''
         timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date * 1000).toString().substring(0, 25) : ''
         //if pointPosition calculate point position otherwise use mouse location
         let x, y
@@ -569,7 +592,8 @@ function showMetaBox(index, pointPosition) {
 
 function resetNodeColors(nodesNoLongerHighlighted) {
     //console.log('reseting ', nodesNoLongerHighlighted)
-
+    const pointGeo = threejsObjects.pointGeo
+    
     nodesNoLongerHighlighted.forEach((node) => {
 
         
@@ -615,6 +639,9 @@ window.addEventListener('mouseup', (e) => {
 
 
 window.addEventListener('mousemove', (e) => {
+    const camera = threejsObjects.camera
+          scatterPlot = threejsObjects.scatterPlot
+
     if (mouseDown) {
         var dx = e.clientX - sx;
         var dy = e.clientY - sy;
@@ -689,7 +716,7 @@ selectedNodesEl.addEventListener( 'mouseout', (e) => { overSelectedNodes = false
 function mousewheel(e) {
 	let d = ((typeof e.wheelDelta != "undefined")?(-e.wheelDelta):e.detail);
     d = 100 * ((d>0)?1:-1);    
-    const cPos = camera.position;
+    const cPos = threejsObjects.camera.position;
     if (isNaN(cPos.x) || isNaN(cPos.y) || isNaN(cPos.y)) return;
 
 	mb = d>0 ? 1.05 : 0.95;
@@ -702,14 +729,19 @@ function mousewheel(e) {
 
 let fraction = 0
 function animate() {
+
+    const renderer = threejsObjects.renderer,
+          scene = threejsObjects.scene,
+          groupLine = threejsObjects.groupLine,
+          camera = threejsObjects.camera,
+          stats = threejsObjects.stats
     
     if(stats) {
         stats.begin();
     }
-    //last = t;
+
     renderer.clear();
-    //console.log(mouse)
-    //hoverHighlight() 
+
     if(!shiftDown && !mouseDown) {
         hoverHighlightFast()
 
@@ -718,13 +750,11 @@ function animate() {
         metaDivEl.style.opacity = 0
     }
 
-    //camera.lookAt(scene.position);
     renderer.render(scene, camera);
 
-
-    if(line) {
-    fraction = ( fraction + 0.0005 ); // fraction in [ 0, 1 ]
-    line.material.dashSize = fraction * lineLength;
+    if(groupLine) {
+        fraction = ( fraction + 0.0005 ); // fraction in [ 0, 1 ]
+        groupLine.material.dashSize = fraction * lineLength;
 
     }
 
