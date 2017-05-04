@@ -60,8 +60,10 @@ if(showStat) {
     }
 }
 
-let allCoords;
-let allMetaData;
+let allCoords,
+    allMetaData,
+    groups,
+    indexByIdMap
 
 const COLUMN_TYPES = {DATE: 'DATE', NUMBER: 'NUMBER'}
 
@@ -70,7 +72,7 @@ const dataSetProperties = {
     metaDataAccessor: d => d.meta,
     xAccessor: d => d.coords[0],
     yAccessor: d => d.coords[1],
-    colorAccessor: m => m ? 'a' : null,
+    colorAccessor: m => m ? m.groups[0] : null,
     imageAccessor: m => m ? m.sizes[1].source : null,
     metaColumnTypes: {
         'date': COLUMN_TYPES.DATE,
@@ -109,7 +111,8 @@ const metaDivEl = document.getElementById('meta'),
       selectionEl = document.getElementById('selection'),
       selectedNodesEl = document.getElementById('selectednodes'),
       controlsEl = document.getElementById('controls'),
-      mouseEl = document.getElementById('mouse')
+      mouseEl = document.getElementById('mouse'),
+      groupnumEl = document.getElementById('groupnum')
 
 
 //TODO metaData no longer needed?!
@@ -136,8 +139,8 @@ function addPoints(dataPoints, metaData, idAccessor, xAccessor, yAccessor, color
 	    //pointGeo.vertices[i].speed = (z / 100) * (x / 100);
         const pointRGB = getRGBColorByIndex(i)
 
-	    //pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
-        pointGeo.colors.push(new THREE.Color().setRGB(0.9, 0.9, 0.9))
+	    pointGeo.colors.push(new THREE.Color().setRGB(pointRGB.r/255, pointRGB.g/255, pointRGB.b/255));
+        //pointGeo.colors.push(new THREE.Color().setRGB(0.9, 0.9, 0.9))
 
 	}
     console.log('rbush search')
@@ -166,14 +169,12 @@ const q = d3.queue()
               meta = results[1]
         console.log(meta[0], meta.length)
         console.log(tsne[0], tsne.length)
-        console.log(results[2][0])
-
-
-
 
         allMetaData = UTILS.createMetaDataMap(results[1], 
                         dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         allCoords = tsne//.sort((a, b) => parseInt(a.id) - parseInt(b.id))
+        groups = results[2]
+        //needed?
         UTILS.createMetaDataMap(meta, 
                         dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         createMetaDataOptions()
@@ -183,120 +184,137 @@ const q = d3.queue()
             dataSetProperties.xAccessor, dataSetProperties.yAccessor,
             dataSetProperties.colorAccessor)
 
-        const indexByIdMap = UTILS.createIndexByIdMap(tsne, dataSetProperties.idAccessor)
+        indexByIdMap = UTILS.createIndexByIdMap(tsne, dataSetProperties.idAccessor)
 
         console.log(indexByIdMap)
-        const start = 68
-        d3.range(start, 69).forEach(indx => {
+        const start = 69
 
-            setTimeout(() => {
-                resetNodeColors(highlightedNodes.selection)
-                //highlightedNodes.selection = []
+                              
+        //addGroupLine(start)
 
-                selectedNodesEl.innerText = 'user '+ indx
-                console.log(indx)
-                highlightedNodes.selection = results[2][indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
-
-                //console.log(highlightedNodes.selection)
-
-                
-                highlightedNodes.selection.forEach((result, i) => {
-                    //console.log(result.index, i, pointGeo.colors.length, pointGeo.colors[result.index])
-                    if(result.index >=0) {
-                        const pointColor = pointGeo.colors[result.index]
-                        pointColor.setRGB(1, 0 ,0 )
-                        const pointPosition = pointGeo.vertices[result.index]
-                        pointPosition.z = 1//200
-                    }
-                    
-                })
-                
-                //var MAX_POINTS = 500;
-
-                var points = highlightedNodes.selection.map(d => {
-                    const ind = d.index
-                    const x = xScale(dataSetProperties.xAccessor(allCoords[ind]));
-                    const y = yScale(dataSetProperties.yAccessor(allCoords[ind]));
-                    const z = 0//Math.random() * 500
-
-                    return new THREE.Vector3(x, y, z)
-                    
-                })
-
-                // geometry
-                var geometry = new THREE.BufferGeometry();
-
-                // attributes
-                numPoints = points.length;
-                var positions = new Float32Array( numPoints * 3 ); // 3 vertices per point
-                var colors = new Float32Array( numPoints * 3 ); // 3 channels per point
-                var lineDistances = new Float32Array( numPoints * 1 ); // 1 value per point
-
-                geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
-                geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
-                geometry.addAttribute( 'lineDistance', new THREE.BufferAttribute( lineDistances, 1 ) );
-
-                // populate
-                var color = new THREE.Color();
-
-                for ( var i = 0, index = 0, l = numPoints; i < l; i ++, index += 3 ) {
-
-                    positions[ index ] = points[ i ].x;
-                    positions[ index + 1 ] = points[ i ].y;
-                    positions[ index + 2 ] = points[ i ].z;
-
-                    color.setHSL( i / l, 1.0, 0.5 );
-
-                    colors[ index ] = color.r;
-                    colors[ index + 1 ] = color.g;
-                    colors[ index + 2 ] = color.b;
-
-                    if ( i > 0 ) {
-
-                        lineDistances[ i ] = lineDistances[ i - 1 ] + points[ i - 1 ].distanceTo( points[ i ] );
-
-                    }
-
-                }
-
-                lineLength = lineDistances[ numPoints - 1 ];
-
-
-                // material
-                var material = new THREE.LineDashedMaterial( {
-
-                    vertexColors: THREE.VertexColors,
-                    dashSize: 1, // to be updated in the render loop
-                    gapSize: 1e10 // a big number, so only one dash is rendered
-
-                } );
-
-                // line
-                line = new THREE.Line( geometry, material );
-                scene.add( line );                
-
-
-            }, (indx - start) * 700)
-
-
-        })
 
 
     })
 
 
+function addGroupLine(indx) {
+    resetNodeColors(highlightedNodes.selection)
+                //highlightedNodes.selection = []
+
+    scene.remove(line)
+
+    selectedNodesEl.innerText = 'user '+ indx
+    console.log(indx)
+    highlightedNodes.selection = groups[indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
+
+    //console.log(highlightedNodes.selection)
+
+    
+    highlightedNodes.selection.forEach((result, i) => {
+        //console.log(result.index, i, pointGeo.colors.length, pointGeo.colors[result.index])
+        if(result.index >=0) {
+            const pointColor = pointGeo.colors[result.index]
+            pointColor.setRGB(1, 0 ,0 )
+            const pointPosition = pointGeo.vertices[result.index]
+            pointPosition.z = 1//200
+        }
+        
+    })
+    
+    //changeColors(true)
+    
+    //var MAX_POINTS = 500;
+
+    var points = highlightedNodes.selection.map(d => {
+        const ind = d.index
+        const x = xScale(dataSetProperties.xAccessor(allCoords[ind]));
+        const y = yScale(dataSetProperties.yAccessor(allCoords[ind]));
+        const z = 0//Math.random() * 500
+
+        return new THREE.Vector3(x, y, z)
+        
+    })
+
+    // geometry
+    var geometry = new THREE.BufferGeometry();
+
+    // attributes
+    numPoints = points.length;
+    var positions = new Float32Array( numPoints * 3 ); // 3 vertices per point
+    var colors = new Float32Array( numPoints * 3 ); // 3 channels per point
+    var lineDistances = new Float32Array( numPoints * 1 ); // 1 value per point
+
+    geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+    geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
+    geometry.addAttribute( 'lineDistance', new THREE.BufferAttribute( lineDistances, 1 ) );
+
+    // populate
+    var color = new THREE.Color();
+
+    for ( var i = 0, index = 0, l = numPoints; i < l; i ++, index += 3 ) {
+
+        positions[ index ] = points[ i ].x;
+        positions[ index + 1 ] = points[ i ].y;
+        positions[ index + 2 ] = points[ i ].z;
+
+        color.setHSL( i / l, 1.0, 0.5 );
+
+        colors[ index ] = color.r;
+        colors[ index + 1 ] = color.g;
+        colors[ index + 2 ] = color.b;
+
+        if ( i > 0 ) {
+
+            lineDistances[ i ] = lineDistances[ i - 1 ] + points[ i - 1 ].distanceTo( points[ i ] );
+
+        }
+
+    }
+
+    lineLength = lineDistances[ numPoints - 1 ];
+
+
+    // material
+    var material = new THREE.LineDashedMaterial( {
+
+        vertexColors: THREE.VertexColors,
+        dashSize: 1, // to be updated in the render loop
+        gapSize: 1e10 // a big number, so only one dash is rendered
+
+    } );
+
+    // line
+    line = new THREE.Line( geometry, material );
+    fraction = 0
+    scene.add( line ); 
+}
+
+
 function createMetaDataOptions() {
     const keys = Object.keys(getMetaDataByIndex(0))
-    controlsEl.innerHTML = keys.map(key => `<option>${key}</option>`)
+    const options = keys.map(key => `<option>${key}</option>`)
+    if(groups.length) {
+        options.push('<option>highlight groups</option>')
+    }
+    controlsEl.innerHTML = options
     controlsEl.selectedIndex = 1
     controlsEl.addEventListener('change', (e) => {
-      colorOptionChanged(e.srcElement.selectedIndex, keys)  
+      const index = e.srcElement.selectedIndex
+      colorOptionChanged(index, keys)  
     }) 
 }
 
 function colorOptionChanged(index, keys) {
 
     const columnKey = keys[index]
+    if(columnKey==undefined) {
+        dataSetProperties.colorAccessor = d => 'a'
+        colorScale = d3.scaleOrdinal().domain(['a']).range(['rgb(200,200,200)'])
+        changeColors(false)
+        addGroupLine(groupnumEl.value)
+        return
+    }
+
     dataSetProperties.colorAccessor = d => d ? d[columnKey] : null
 
     const columnType = dataSetProperties.metaColumnTypes[columnKey]
@@ -557,11 +575,11 @@ function resetNodeColors(nodesNoLongerHighlighted) {
         
         const pointRGB = getRGBColorByIndex(node.index)
         const makeDarker = highlightedNodes.selection.filter(d => d.index===node.index).length ? DARKEN_FACTOR : 1
-        // pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255 * makeDarker,
-        //                                                        pointRGB.g/255 * makeDarker,
-        //                                                        pointRGB.b/255 * makeDarker)
+        pointGeo.colors[node.index] = new THREE.Color().setRGB(pointRGB.r/255 * makeDarker,
+                                                               pointRGB.g/255 * makeDarker,
+                                                               pointRGB.b/255 * makeDarker)
 
-        pointGeo.colors[node.index] = new THREE.Color().setRGB(0.9, 0.9, 0.9)
+        //pointGeo.colors[node.index] = new THREE.Color().setRGB(0.9, 0.9, 0.9)
 
         const highlightPosition = pointGeo.vertices[node.index]
         highlightPosition.z = 0
