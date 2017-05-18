@@ -17,7 +17,7 @@ const threejsObjects = {
     groupLine: null,
     scene: new THREE.Scene(),
     scatterPlot: new THREE.Object3D(),
-    mat: new THREE.PointsMaterial({vertexColors: true, size: PARTICLE_SIZE}),
+    mat: null,
     pointGeo: new THREE.Geometry(),
     points: null,
     backgroundPlane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
@@ -138,6 +138,10 @@ function setupThreeJS() {
     threejsObjects.renderer.setClearColor(0xFFFFFF, 1.0);
 
     threejsObjects.scene.add(threejsObjects.scatterPlot);
+    const sprite = new THREE.TextureLoader().load( "circle.png" )
+    threejsObjects.mat = new THREE.PointsMaterial( { size: PARTICLE_SIZE, /*map: sprite,*/  vertexColors: THREE. VertexColors, depthTest: false,/*sizeAttenuation: false,*/ opacity: 0.8,  transparent: true } )
+//new THREE.PointsMaterial({vertexColors: true, size: PARTICLE_SIZE}),
+
     threejsObjects.points = new THREE.Points(threejsObjects.pointGeo, threejsObjects.mat)
 
     if(showStat) { 
@@ -211,7 +215,7 @@ function addGroupLine(indx) {
 
     scene.remove(threejsObjects.groupLine)
 
-    selectedNodesEl.innerText = 'user '+ indx
+    //selectedNodesEl.innerText = 'user '+ indx
 
     highlightedNodes.selection = groupsData[indx].map(d => { return {index: indexByIdMap[d]}}).filter(d => d.index >=0 )
 
@@ -753,7 +757,7 @@ function animate() {
     renderer.render(scene, camera);
 
     if(groupLine) {
-        fraction = ( fraction + 0.0005 ); // fraction in [ 0, 1 ]
+        fraction = ( fraction + 0.01 ); // fraction in [ 0, 1 ]
         groupLine.material.dashSize = fraction * lineLength;
 
     }
