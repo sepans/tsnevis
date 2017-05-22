@@ -1,4 +1,4 @@
-const w = window.innerWidth, h = window.innerHeight 
+const w =  window.innerWidth , h = window.innerHeight 
 
 
 const ZOOM_MIN_Z = 100
@@ -45,22 +45,73 @@ let sx = 0,
     altDown = false,
     overSelectedNodes = false
 
-
+const FILE_TYPES = {DATA: 'DATA', META: 'META', DATA_META: 'DATA_META', PATH: 'PATH'}
 
 const dataSetProperties = {
+    dataFiles: [
+        {
+            src: 'data/withids.json',
+            type: FILE_TYPES.DATA_META, 
+            unfold: d => Object.keys(d).map(key => {
+                return Object.assign({}, {id: key}, d[key])
+            })
+        }
+    ],
     idAccessor: d => d.id,
-    metaDataAccessor: d => d.meta,
-    xAccessor: d => d.coords[0],
-    yAccessor: d => d.coords[1],
-    colorAccessor: m => m ? m.groups[0] : null,
-    imageAccessor: m => m ? m.sizes[1].source : null,
+    metaDataAccessor: d => d,
+    xAccessor: d => -d.x,
+    yAccessor: d => -d.y,
+    colorAccessor: m => m ? m.c : null,
+    imageAccessor: null,
+    info1ElContent: (nodeMetaData) => nodeMetaData.c,
+    info2ElContent: (nodeMetaData) => nodeMetaData.touched,
+    selectedItemInfo: (node, nodeMetaData) => 
+        `<div class="select" __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}">${nodeMetaData.title} c: ${nodeMetaData.c}</div>`,
     metaColumnTypes: {
-        'date': COLUMN_TYPES.DATE,
-        'comments': COLUMN_TYPES.NUMBER,
-        'views': COLUMN_TYPES.NUMBER,
+        'touched': COLUMN_TYPES.DATE,
+        'length': COLUMN_TYPES.NUMBER,
+        /*'views': COLUMN_TYPES.NUMBER,*/
+
     }
 }
 
+
+// const dataSetProperties = {
+//     dataFiles: [
+//         {
+//             src: 'data/conv2vec_tsne_026.json',
+//             type: FILE_TYPES.DATA, 
+//             unfold: d => d
+//         },
+//         {
+//             src: 'data/word2vec_meta_short.json',
+//             type: FILE_TYPES.META, 
+//             unfold: d => d
+//         },
+//         {
+//             src: 'data/user_sequences.json',
+//             type: FILE_TYPES.PATH, 
+//             unfold: d => d
+//         }
+
+//     ],
+//     idAccessor: d => d.id,
+//     metaDataAccessor: d => d.meta,
+//     xAccessor: d => d.coords[0],
+//     yAccessor: d => -d.coords[1],
+//     colorAccessor: m => m ? m.groups[0] : null,
+//     imageAccessor: m => m ? m.sizes[1].source : null,
+//     info1ElContent: (nodeMetaData) => nodeMetaData ? nodeMetaData.groups.join(', ') +' c ' +  nodeMetaData.comments +' v '+ nodeMetaData.views : '', 
+//     info2ElContent: (nodeMetaData) => nodeMetaData ? new Date(nodeMetaData.date * 1000).toString().substring(0, 25) : '',
+//     selectedItemInfo: (node, nodeMetaData) => 
+//         `<img class="select" __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` ,
+//     metaColumnTypes: {
+//         'date': COLUMN_TYPES.DATE,
+//         'comments': COLUMN_TYPES.NUMBER,
+//         'views': COLUMN_TYPES.NUMBER,
+
+//     }
+// }
 
 const tree = rbush()
 
@@ -78,8 +129,8 @@ const logScale = d3.scaleLog()
 const metaDivEl = document.getElementById('meta'),
       imageEl = document.querySelector('#meta img'),
       titleEl = document.querySelector('#meta .title'),
-      categoryEl = document.querySelector('#meta .category'),
-      timeEl = document.querySelector('#meta .time'),
+      info1El = document.querySelector('#meta .info1'),
+      info2El = document.querySelector('#meta .info2'),
       selectionEl = document.getElementById('selection'),
       selectedNodesEl = document.getElementById('selectednodes'),
       controlsEl = document.getElementById('controls'),
@@ -92,21 +143,27 @@ setupThreeJS()
 
 //load data
 const q = d3.queue()
+
+const dataFiles = dataSetProperties.dataFiles.forEach(d => {
+    q.defer(d3.json, d.src)
+} )
     //.defer(d3.json, 'data/word2vec_tsne_2d.json')
-    .defer(d3.json, 'data/conv2vec_tsne_026.json')
-    .defer(d3.json, 'data/word2vec_meta_short.json')
-    .defer(d3.json, 'data/user_sequences.json')
-    .awaitAll((error, results) => {
+    //.defer(d3.json, 'data/withids.json')
+    //.defer(d3.json, 'data/conv2vec_tsne_026.json')
+    //.defer(d3.json, 'data/word2vec_meta_short.json')
+    //.defer(d3.json, 'data/user_sequences.json')
+q.awaitAll((error, results) => {
         if (error) {
             console.log('ERROR', error)
             throw error;
         }
-        const tsne = results[0],
-              meta = results[1]
+        console.log(results)
+        const tsne = dataSetProperties.dataFiles[0].unfold(results[0])
+        const meta = results.length > 1 ? dataSetProperties.dataFiles[1].unfold(results[1]) : tsne//results[1]
         console.log(meta[0], meta.length)
         console.log(tsne[0], tsne.length)
 
-        allMetaData = UTILS.createMetaDataMap(results[1], 
+        allMetaData = UTILS.createMetaDataMap(meta, 
                         dataSetProperties.idAccessor, dataSetProperties.metaDataAccessor)
         allCoords = tsne//.sort((a, b) => parseInt(a.id) - parseInt(b.id))
         groupsData = results[2]
@@ -301,12 +358,12 @@ function addGroupLine(indx) {
 
 function createMetaDataOptions() {
     const keys = Object.keys(getMetaDataByIndex(0))
-    const options = keys.map(key => `<option>${key}</option>`)
-    if(groupsData.length) {
+    const options = ['<option>select</option>'].concat(keys.map(key => `<option>${key}</option>`))
+    if(groupsData && groupsData.length) {
         options.push('<option>highlight groups</option>')
     }
     controlsEl.innerHTML = options
-    controlsEl.selectedIndex = 1
+    controlsEl.selectedIndex = 0
     controlsEl.addEventListener('change', (e) => {
       const index = e.srcElement.selectedIndex
       colorOptionChanged(index, keys)  
@@ -315,7 +372,8 @@ function createMetaDataOptions() {
 
 function colorOptionChanged(index, keys) {
 
-    const columnKey = keys[index]
+    const columnKey = keys[index - 1]
+
     if(columnKey==undefined) {
         dataSetProperties.colorAccessor = d => 'a'
         colorScale = d3.scaleOrdinal().domain(['a']).range(['rgb(200,200,200)'])
@@ -458,14 +516,15 @@ function drawSelectedNodes() {
     highlightedNodes.selection.forEach((node) => {
         if(allMetaData) {
             const nodeMetaData = getMetaDataByIndex(node.index)
-            selectedNodesHTML = `${selectedNodesHTML} <img __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
+            //selectedNodesHTML = selectedNodesHTML + `<img class="select" __data_id="${getIdByIndex(node.index)}" __data_index="${node.index}" src="${dataSetProperties.imageAccessor(nodeMetaData)}">` 
+            selectedNodesHTML = selectedNodesHTML + dataSetProperties.selectedItemInfo(node, nodeMetaData)
         }
 
     })
     selectedNodesEl.innerHTML = selectedNodesHTML;
 
-    [].forEach.call(document.querySelectorAll('#selectednodes img'), (img) => {
-        img.addEventListener('click', nodePreviewImageClicked)
+    [].forEach.call(document.querySelectorAll('#selectednodes .select'), (select) => {
+        select.addEventListener('click', nodePreviewImageClicked)
     })
 
 
@@ -555,10 +614,12 @@ function showMetaBox(index, pointPosition) {
 
     const nodeMetaData = getMetaDataByIndex(index)
     if(nodeMetaData) {
-        imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
+        if(dataSetProperties.imageAccessor) {
+         imageEl.setAttribute('src', dataSetProperties.imageAccessor(nodeMetaData))
+        }
         titleEl.innerText = nodeMetaData ? nodeMetaData.title : ''
-        categoryEl.innerText = nodeMetaData ? nodeMetaData.groups.join(', ') +' c ' +  nodeMetaData.comments +' v '+ nodeMetaData.views : '' //JSON.stringify(nodeMetaData, '\t') : ''
-        timeEl.innerText = nodeMetaData ? new Date(nodeMetaData.date * 1000).toString().substring(0, 25) : ''
+        info1El.innerText = dataSetProperties.info1ElContent(nodeMetaData)
+        info2El.innerText = dataSetProperties.info2ElContent(nodeMetaData)
         //if pointPosition calculate point position otherwise use mouse location
         let x, y
         if(pointPosition) {
@@ -586,8 +647,8 @@ function showMetaBox(index, pointPosition) {
     else {
         imageEl.setAttribute('src', '')
         titleEl.innerText = ''
-        categoryEl.innerText =  ''
-        timeEl.innerText =  ''
+        info1El.innerText =  ''
+        info2El.innerText =  ''
 
     }    
 
